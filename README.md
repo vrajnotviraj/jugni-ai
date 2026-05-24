@@ -1,6 +1,12 @@
+<img src="assets/logo.png" alt="Jugni AI logo" width="260">
+
 # Jugni AI
 
-A Telegram food accountability bot for teams.
+**A Telegram food accountability bot for teams.**
+
+[How it works](#how-it-works) · [Setup](#setup) · [Daily summary](#daily-summary) · [Roadmap](#what-comes-next)
+
+---
 
 The first problem was boring and real: group accountability dies when tracking takes work.
 
