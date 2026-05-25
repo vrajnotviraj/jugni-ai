@@ -17,30 +17,24 @@ def format_photo_reply(
     if not analysis.is_food:
         return NOT_FOOD_REPLY
 
-    header = (
-        f"{_dish_icon(analysis.dish)} <b>{escape(sender_label, quote=False)}</b> — "
-        f"{escape(analysis.dish, quote=False)}"
-    )
+    header = f"{_dish_icon(analysis.dish)} <b>{escape(sender_label, quote=False)}'s meal</b>"
+    dish_line = f"Dish: {escape(analysis.dish, quote=False)}"
+    calories_line = f"{_calorie_icon(analysis.calories)} Calories: {analysis.calories} kcal"
+    today_line = f"{_day_progress_icon(daily_total)} Today's total: {daily_total} kcal"
+    confidence_line = _confidence_line(analysis.confidence)
 
-    totals_parts = [f"{_calorie_icon(analysis.calories)} {analysis.calories} kcal"]
-    confidence_chip = _confidence_chip(analysis.confidence)
-    if confidence_chip:
-        totals_parts.append(confidence_chip)
-    totals_parts.append(
-        f"{_day_progress_icon(daily_total)} today: {daily_total} kcal"
-    )
-    totals = "  ·  ".join(totals_parts)
+    parts = [header, dish_line, calories_line, today_line, confidence_line]
 
     tip = (analysis.tip or "").strip()
-    parts = [header, totals]
     if tip:
         parts.append(f"<blockquote>{escape(tip, quote=False)}</blockquote>")
     return "\n".join(parts)
 
 
-def _confidence_chip(confidence: str) -> str:
+def _confidence_line(confidence: str) -> str:
     icon = _CONFIDENCE_ICONS.get(confidence)
-    return f"{icon} {confidence}" if icon else ""
+    prefix = f"{icon} " if icon else ""
+    return f"{prefix}Confidence: {confidence}"
 
 
 _CALORIE_TIERS = (

@@ -66,9 +66,9 @@ Gujarati thali sizing guide:
 - Restaurant thali (2-3 shaaks, dal, kadhi, rice, 3 rotli, farsan, sweet, papad): 900-1300 kcal
 
 Confidence levels:
-- "high" — single clearly identifiable dish, clear portion size
-- "medium" — multiple items, partially obscured portions, or a thali with several katoris
-- "low" — blurry, dim, or unfamiliar dish
+- "high": single clearly identifiable dish, clear portion size
+- "medium": multiple items, partially obscured portions, or a thali with several katoris
+- "low": blurry, dim, or unfamiliar dish
 </context>
 
 <rules>
@@ -80,9 +80,10 @@ Confidence levels:
 6. Prefer the midpoint of the reference range unless portion size, visible oil/ghee, or the caption clearly skews the estimate.
 7. Set confidence using the levels defined in <context>. Default to "medium" for a thali or any plate with multiple katoris.
 8. dish: 2-8 words naming the most prominent items in plain English with the Gujarati name when relevant. Example: "Thepla with kadhi, khichdi, shrikhand". Do not list every garnish.
-9. tip: one practical sentence, 12-24 words, written like a friendly nutritionist. Tailor the tip to THIS specific plate — do not default to the same suggestion (e.g. "add curd" or "add dal") across photos. Mention a concrete macro (protein, fibre, carbs, fat) or micro (iron, calcium, magnesium, potassium, vitamin C) gap or pairing suggestion. Vary the angle across responses: sometimes name a specific food to add, sometimes a swap, sometimes a portion adjustment, sometimes a hydration or timing cue, sometimes praise what's already balanced. Avoid generic platitudes like "eat balanced" or "drink water" unless nothing else fits. Do not repeat the same boilerplate add-on in every response. No emojis. No greetings. No disclaimers about being an AI.
-10. Use integer calories. Never return ranges or decimals.
-11. Output strict JSON only — no markdown, no code fences, no commentary outside the JSON object.
+9. tip: one practical sentence, 12-24 words, written like a friendly nutritionist. Tailor the tip to THIS specific plate; do not default to the same suggestion (e.g. "add curd" or "add dal") across photos. Mention a concrete macro (protein, fibre, carbs, fat) or micro (iron, calcium, magnesium, potassium, vitamin C) gap or pairing suggestion. Vary the angle across responses: sometimes name a specific food to add, sometimes a swap, sometimes a portion adjustment, sometimes a hydration or timing cue, sometimes praise what's already balanced. Avoid generic platitudes like "eat balanced" or "drink water" unless nothing else fits. Do not repeat the same boilerplate add-on in every response. No emojis. No greetings. No disclaimers about being an AI.
+10. (critical) Never use em-dashes (—) or en-dashes (–) anywhere in the output. Use commas, colons, semicolons, or periods to separate clauses. Plain hyphens (-) inside compound words like "fried-and-sweet" are fine.
+11. Use integer calories. Never return ranges or decimals.
+12. Output strict JSON only. No markdown, no code fences, no commentary outside the JSON object.
 </rules>
 
 <output>
@@ -99,19 +100,19 @@ Return JSON matching exactly this schema:
 <examples>
 <example>
 <input>Photo of a Gujarati thali: 3 rotli, dal, bhindi shaak, jeera rice, kadhi, salad, papad, jalebi. Caption: "Sunday lunch at home".</input>
-<output>{"is_food": true, "dish": "Gujarati thali with bhindi, dal, kadhi, rice, rotli, jalebi", "calories": 950, "confidence": "medium", "tip": "Mostly carbs and sugar — swap the jalebi for chhaas or add a paneer cube to lift the protein on this plate."}</output>
+<output>{"is_food": true, "dish": "Gujarati thali with bhindi, dal, kadhi, rice, rotli, jalebi", "calories": 950, "confidence": "medium", "tip": "Mostly carbs and sugar, so swap the jalebi for chhaas or add a paneer cube to lift the protein on this plate."}</output>
 </example>
 <example>
 <input>Photo of 2 theplas and a glass of masala chai. Caption: "breakfast".</input>
-<output>{"is_food": true, "dish": "2 methi theplas with masala chai", "calories": 360, "confidence": "high", "tip": "Light on protein for breakfast — add a boiled egg or a katori curd to slow the carb spike and stay full longer."}</output>
+<output>{"is_food": true, "dish": "2 methi theplas with masala chai", "calories": 360, "confidence": "high", "tip": "Light on protein for breakfast: add a boiled egg or a katori curd to slow the carb spike and stay full longer."}</output>
 </example>
 <example>
 <input>Photo of khichdi with ghee, kadhi, and papad.</input>
-<output>{"is_food": true, "dish": "Vaghareli khichdi with kadhi and papad", "calories": 620, "confidence": "high", "tip": "Comforting but low on fibre — add a sliced cucumber-tomato salad or sprouts to bring in roughage and micronutrients."}</output>
+<output>{"is_food": true, "dish": "Vaghareli khichdi with kadhi and papad", "calories": 620, "confidence": "high", "tip": "Comforting but low on fibre, so add a sliced cucumber-tomato salad or sprouts to bring in roughage and micronutrients."}</output>
 </example>
 <example>
 <input>Photo of 1 plate undhiyu with 2 puris and jalebi.</input>
-<output>{"is_food": true, "dish": "Undhiyu with puris and jalebi", "calories": 880, "confidence": "medium", "tip": "Fried-and-sweet combo — skip dinner carbs tonight and lean on dal and salad to balance the day's calories."}</output>
+<output>{"is_food": true, "dish": "Undhiyu with puris and jalebi", "calories": 880, "confidence": "medium", "tip": "Fried-and-sweet combo, so skip dinner carbs tonight and lean on dal and salad to balance the day's calories."}</output>
 </example>
 <example>
 <input>Blurry photo of a laptop on a desk, no food visible.</input>
@@ -139,7 +140,7 @@ def food_analysis_user_prompt(caption: str | None) -> str:
         return FOOD_ANALYSIS_USER_PROMPT_WITHOUT_CAPTION
     return (
         "Analyse the attached food photo and return the JSON described in the system prompt. "
-        f'The user provided this caption — treat it as the strongest hint about the dish: "{caption}". '
+        f'The user provided this caption; treat it as the strongest hint about the dish: "{caption}". '
         "Return strict JSON only."
     )
 
