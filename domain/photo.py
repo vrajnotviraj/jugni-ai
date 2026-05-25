@@ -78,6 +78,17 @@ class StoredPhoto:
     sent_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class DeletedMeal:
+    chat_id: int
+    message_id: int
+    sender_label: str
+    day_key: str
+    calories: int
+    dish: str
+    sent_at: datetime | None
+
+
 def _sender_label(sender: dict[str, Any]) -> str:
     username = sender.get("username")
     if username:

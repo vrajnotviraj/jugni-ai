@@ -1,10 +1,11 @@
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
 
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.photo import Photo, StoredPhoto
+from domain.photo import DeletedMeal, Photo, StoredPhoto
 from storage._hash_codec import (
     analysis_to_fields,
     failure_to_fields,
@@ -62,18 +63,62 @@ class RedisPhotoRepository:
         return photos
 
     async def daily_user_total(self, photo: Photo) -> int:
-        day_key = self._day_key(photo)
+        return await self.daily_user_calories(
+            chat_id=photo.chat_id,
+            day_key=self._day_key(photo),
+            sender_label=photo.sender_label,
+        )
+
+    async def daily_user_calories(
+        self,
+        *,
+        chat_id: int,
+        day_key: str,
+        sender_label: str,
+    ) -> int:
         message_ids = await self._redis.smembers(
-            _user_day_key(photo.chat_id, day_key, photo.sender_label)
+            _user_day_key(chat_id, day_key, sender_label)
         )
         total = 0
         for message_id in message_ids:
             decoded = photo_from_hash(
-                await self._redis.hgetall(_photo_key(photo.chat_id, int(message_id)))
+                await self._redis.hgetall(_photo_key(chat_id, int(message_id)))
             )
             if decoded is not None:
                 total += decoded.calories
         return total
+
+    async def delete_meal(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+    ) -> DeletedMeal | None:
+        photo_key = _photo_key(chat_id, message_id)
+        raw = await self._redis.hgetall(photo_key)
+        if not raw:
+            return None
+
+        sender_label = raw.get("sender_label", "")
+        day_key = raw.get("day", "")
+
+        if day_key:
+            await self._redis.srem(_chat_day_key(chat_id, day_key), message_id)
+            if sender_label:
+                await self._redis.srem(
+                    _user_day_key(chat_id, day_key, sender_label), message_id
+                )
+        await self._redis.delete(photo_key)
+
+        return DeletedMeal(
+            chat_id=chat_id,
+            message_id=message_id,
+            sender_label=sender_label,
+            day_key=day_key,
+            calories=_safe_int(raw.get("calories")),
+            dish=raw.get("dish", ""),
+            sent_at=_safe_datetime(raw.get("sent_at")),
+        )
 
     async def close(self) -> None:
         await self._redis.aclose()
@@ -92,3 +137,21 @@ def _chat_day_key(chat_id: int, day_key: str) -> str:
 
 def _user_day_key(chat_id: int, day_key: str, sender_label: str) -> str:
     return f"chat:{chat_id}:day:{day_key}:user:{sender_label}:messages"
+
+
+def _safe_int(value: object) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None

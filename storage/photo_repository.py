@@ -1,7 +1,7 @@
 from typing import Protocol
 
 from domain.analysis import FoodAnalysis
-from domain.photo import Photo, StoredPhoto
+from domain.photo import DeletedMeal, Photo, StoredPhoto
 
 
 class PhotoRepository(Protocol):
@@ -24,6 +24,23 @@ class PhotoRepository(Protocol):
 
     async def daily_user_total(self, photo: Photo) -> int:
         """Return the running calorie total for this photo's sender today."""
+
+    async def daily_user_calories(
+        self,
+        *,
+        chat_id: int,
+        day_key: str,
+        sender_label: str,
+    ) -> int:
+        """Return the calorie total for one user on one local day."""
+
+    async def delete_meal(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+    ) -> DeletedMeal | None:
+        """Delete a stored meal and return its snapshot, or None if missing."""
 
     async def close(self) -> None:
         """Close any network connections owned by the repository."""
