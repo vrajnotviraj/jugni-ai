@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,7 @@ from domain.photo import StoredPhoto
 CSV_FILENAME_PREFIX = "meals"
 CSV_MIME_TYPE = "text/csv"
 CSV_COLUMNS = ("date", "sender", "dish", "calories", "eaten_at", "image_link")
+_FILENAME_TOKEN_PATTERN = re.compile(r"[^A-Za-z0-9._@-]+")
 
 
 def build_meals_csv(
@@ -34,10 +36,18 @@ def build_meals_csv(
     return buffer.getvalue().encode("utf-8")
 
 
-def csv_filename(*, start: str, end: str) -> str:
+def csv_filename(*, start: str, end: str, person: str | None = None) -> str:
+    base = CSV_FILENAME_PREFIX
+    if person:
+        base = f"{base}_{_safe_filename_token(person)}"
     if start == end:
-        return f"{CSV_FILENAME_PREFIX}_{start}.csv"
-    return f"{CSV_FILENAME_PREFIX}_{start}_to_{end}.csv"
+        return f"{base}_{start}.csv"
+    return f"{base}_{start}_to_{end}.csv"
+
+
+def _safe_filename_token(value: str) -> str:
+    cleaned = _FILENAME_TOKEN_PATTERN.sub("_", value).strip("_")
+    return cleaned or "unknown"
 
 
 def _telegram_message_link(chat_id: int, message_id: int) -> str | None:

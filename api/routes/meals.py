@@ -92,6 +92,10 @@ async def list_person_meals(
 
 @router.get("/report")
 async def meals_report(
+    person: str = Query(
+        ...,
+        description="Sender label (case- and '@'-insensitive). Required.",
+    ),
     days: int = Query(
         default=7,
         ge=1,
@@ -115,13 +119,15 @@ async def meals_report(
     photos_by_day = await repo.estimated_photos_for_range(
         chat_id=target_chat_id, day_keys=day_keys
     )
+    photos_by_day = _filter_by_person(photos_by_day, person)
+    canonical_label = _canonical_person_label(photos_by_day) or person.strip()
 
     csv_bytes = build_meals_csv(
         chat_id=target_chat_id,
         photos_by_day=photos_by_day,
         timezone=settings.timezone,
     )
-    filename = csv_filename(start=day_keys[0], end=day_keys[-1])
+    filename = csv_filename(start=day_keys[0], end=day_keys[-1], person=canonical_label)
     total_meals = sum(len(photos) for photos in photos_by_day.values())
     total_calories = sum(
         photo.calories for photos in photos_by_day.values() for photo in photos
@@ -130,7 +136,7 @@ async def meals_report(
     notified = False
     if send:
         caption = (
-            f"📊 Meals report {day_keys[0]} → {day_keys[-1]}\n"
+            f"📊 {canonical_label}'s meals {day_keys[0]} → {day_keys[-1]}\n"
             f"{total_meals} meals · {total_calories} kcal"
         )
         notified = await _send_csv_to_chat(
@@ -143,6 +149,7 @@ async def meals_report(
 
     headers = {
         "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Meals-Report-Person": canonical_label,
         "X-Meals-Report-From": day_keys[0],
         "X-Meals-Report-To": day_keys[-1],
         "X-Meals-Report-Total-Meals": str(total_meals),
@@ -383,6 +390,25 @@ def _matches_person(sender_label: str, needle: str) -> bool:
 
 def _normalize(value: str) -> str:
     return value.strip().lstrip("@").casefold()
+
+
+def _filter_by_person(
+    photos_by_day: dict[str, list[StoredPhoto]],
+    person: str,
+) -> dict[str, list[StoredPhoto]]:
+    return {
+        day_key: [p for p in photos if _matches_person(p.sender_label, person)]
+        for day_key, photos in photos_by_day.items()
+    }
+
+
+def _canonical_person_label(
+    photos_by_day: dict[str, list[StoredPhoto]],
+) -> str | None:
+    for photos in photos_by_day.values():
+        if photos:
+            return photos[0].sender_label
+    return None
 
 
 def _group_by_user(photos: list[StoredPhoto]) -> list[dict[str, Any]]:
