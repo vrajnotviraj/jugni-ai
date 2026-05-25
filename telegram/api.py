@@ -82,6 +82,57 @@ class TelegramBotApi:
 
         await self._call("sendMessage", payload)
 
+    async def send_document(
+        self,
+        chat_id: int,
+        filename: str,
+        content: bytes,
+        *,
+        mime_type: str = "application/octet-stream",
+        caption: str | None = None,
+        parse_mode: str | None = None,
+    ) -> None:
+        if self._dry_run:
+            print(
+                f"\n[DRY-RUN telegram] sendDocument chat_id={chat_id} "
+                f"file={filename} bytes={len(content)} caption={caption!r}\n"
+            )
+            logger.info(
+                "dry-run send document to chat=%s file=%s bytes=%s",
+                chat_id,
+                filename,
+                len(content),
+            )
+            return
+
+        if chat_id == 0:
+            raise TelegramApiError(
+                "Refusing to send document to chat_id=0. Set TELEGRAM_GROUP_CHAT_ID."
+            )
+
+        data: dict[str, str] = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+        if parse_mode:
+            data["parse_mode"] = parse_mode
+        files = {"document": (filename, content, mime_type)}
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{self._base_url}/sendDocument", data=data, files=files
+            )
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"raw": response.text}
+
+        if response.status_code >= 400 or not body.get("ok", False):
+            description = body.get("description") or response.text
+            raise TelegramApiError(
+                f"Telegram sendDocument failed ({response.status_code}): {description}"
+            )
+
     async def _call(self, method: str, payload: dict[str, object]) -> dict:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(f"{self._base_url}/{method}", json=payload)

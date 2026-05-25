@@ -1,7 +1,10 @@
 import logging
+from datetime import date, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from api.dependencies import (
     admin_secret_header,
@@ -15,12 +18,18 @@ from core.dates import day_key_for_day_iso, today_day_key
 from core.settings import Settings
 from domain.photo import StoredPhoto
 from presenters.meal_deleted import MEAL_DELETED_PARSE_MODE, format_meal_deleted
+from presenters.meal_updated import MEAL_UPDATED_PARSE_MODE, format_meal_updated
+from presenters.meals_csv import CSV_MIME_TYPE, build_meals_csv, csv_filename
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/meals", tags=["meals"])
+
+
+class UpdateMealRequest(BaseModel):
+    calories: int = Field(ge=0, description="New calorie count for the meal.")
 
 
 @router.get("")
@@ -81,6 +90,68 @@ async def list_person_meals(
     }
 
 
+@router.get("/report")
+async def meals_report(
+    days: int = Query(
+        default=7,
+        ge=1,
+        le=30,
+        description="Number of days ending today (inclusive).",
+    ),
+    chat_id: int | None = Query(default=None),
+    send: bool = Query(
+        default=True,
+        description="Also send the CSV to the Telegram chat as a document.",
+    ),
+    settings: Settings = Depends(get_settings),
+    repo: PhotoRepository = Depends(get_repo),
+    telegram: TelegramBotApi = Depends(get_telegram),
+    admin_secret: str | None = Depends(admin_secret_header),
+) -> Response:
+    verify_admin_secret(settings, admin_secret)
+    target_chat_id = resolve_target_chat_id(settings, chat_id)
+
+    day_keys = _last_n_day_keys(today_day_key(settings.timezone), days)
+    photos_by_day = await repo.estimated_photos_for_range(
+        chat_id=target_chat_id, day_keys=day_keys
+    )
+
+    csv_bytes = build_meals_csv(
+        chat_id=target_chat_id,
+        photos_by_day=photos_by_day,
+        timezone=settings.timezone,
+    )
+    filename = csv_filename(start=day_keys[0], end=day_keys[-1])
+    total_meals = sum(len(photos) for photos in photos_by_day.values())
+    total_calories = sum(
+        photo.calories for photos in photos_by_day.values() for photo in photos
+    )
+
+    notified = False
+    if send:
+        caption = (
+            f"📊 Meals report {day_keys[0]} → {day_keys[-1]}\n"
+            f"{total_meals} meals · {total_calories} kcal"
+        )
+        notified = await _send_csv_to_chat(
+            telegram=telegram,
+            chat_id=target_chat_id,
+            filename=filename,
+            content=csv_bytes,
+            caption=caption,
+        )
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "X-Meals-Report-From": day_keys[0],
+        "X-Meals-Report-To": day_keys[-1],
+        "X-Meals-Report-Total-Meals": str(total_meals),
+        "X-Meals-Report-Total-Calories": str(total_calories),
+        "X-Meals-Report-Notified": "1" if notified else "0",
+    }
+    return Response(content=csv_bytes, media_type=CSV_MIME_TYPE, headers=headers)
+
+
 @router.delete("/{message_id}")
 async def delete_meal(
     message_id: int,
@@ -139,6 +210,70 @@ async def delete_meal(
     }
 
 
+@router.patch("/{message_id}")
+async def update_meal(
+    message_id: int,
+    payload: UpdateMealRequest,
+    chat_id: int | None = Query(default=None),
+    notify: bool = Query(
+        default=True,
+        description="Send a Telegram notice to the chat.",
+    ),
+    settings: Settings = Depends(get_settings),
+    repo: PhotoRepository = Depends(get_repo),
+    telegram: TelegramBotApi = Depends(get_telegram),
+    admin_secret: str | None = Depends(admin_secret_header),
+) -> dict[str, Any]:
+    verify_admin_secret(settings, admin_secret)
+    target_chat_id = resolve_target_chat_id(settings, chat_id)
+
+    updated = await repo.update_meal_calories(
+        chat_id=target_chat_id,
+        message_id=message_id,
+        calories=payload.calories,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Meal {message_id} not found in chat {target_chat_id}.",
+        )
+
+    new_total = await repo.daily_user_calories(
+        chat_id=target_chat_id,
+        day_key=updated.day_key,
+        sender_label=updated.sender_label,
+    )
+
+    notified = False
+    if notify and updated.calories != updated.previous_calories:
+        notified = await _notify_meal_updated(
+            telegram=telegram,
+            chat_id=target_chat_id,
+            sender_label=updated.sender_label,
+            dish=updated.dish,
+            previous_calories=updated.previous_calories,
+            new_calories=updated.calories,
+            new_total_calories=new_total,
+            day_key=updated.day_key,
+            today_key=today_day_key(settings.timezone),
+        )
+
+    return {
+        "ok": True,
+        "chat_id": target_chat_id,
+        "day": updated.day_key,
+        "meal": {
+            "message_id": updated.message_id,
+            "sender_label": updated.sender_label,
+            "dish": updated.dish,
+            "calories": updated.calories,
+            "previous_calories": updated.previous_calories,
+        },
+        "new_total_calories": new_total,
+        "notified": notified,
+    }
+
+
 async def _notify_meal_deleted(
     *,
     telegram: TelegramBotApi,
@@ -168,6 +303,66 @@ async def _notify_meal_deleted(
         )
         return False
     return True
+
+
+async def _notify_meal_updated(
+    *,
+    telegram: TelegramBotApi,
+    chat_id: int,
+    sender_label: str,
+    dish: str,
+    previous_calories: int,
+    new_calories: int,
+    new_total_calories: int,
+    day_key: str,
+    today_key: str,
+) -> bool:
+    text = format_meal_updated(
+        sender_label=sender_label,
+        dish=dish,
+        previous_calories=previous_calories,
+        new_calories=new_calories,
+        new_total_calories=new_total_calories,
+        day_key=day_key,
+        today_key=today_key,
+    )
+    try:
+        await telegram.send_message(chat_id, text, parse_mode=MEAL_UPDATED_PARSE_MODE)
+    except Exception:
+        logger.exception(
+            "Failed to send meal-updated notice chat=%s sender=%s",
+            chat_id,
+            sender_label,
+        )
+        return False
+    return True
+
+
+async def _send_csv_to_chat(
+    *,
+    telegram: TelegramBotApi,
+    chat_id: int,
+    filename: str,
+    content: bytes,
+    caption: str,
+) -> bool:
+    try:
+        await telegram.send_document(
+            chat_id,
+            filename,
+            content,
+            mime_type=CSV_MIME_TYPE,
+            caption=caption,
+        )
+    except Exception:
+        logger.exception("Failed to send meals CSV to chat=%s", chat_id)
+        return False
+    return True
+
+
+def _last_n_day_keys(today_iso: str, days: int) -> list[str]:
+    today = date.fromisoformat(today_iso)
+    return [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
 
 
 def _resolve_day(settings: Settings, date: str | None) -> str:

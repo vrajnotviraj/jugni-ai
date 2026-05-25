@@ -5,7 +5,7 @@ from redis.asyncio import Redis
 
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.photo import DeletedMeal, Photo, StoredPhoto
+from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
 from storage._hash_codec import (
     analysis_to_fields,
     failure_to_fields,
@@ -61,6 +61,19 @@ class RedisPhotoRepository:
             if decoded is not None:
                 photos.append(decoded)
         return photos
+
+    async def estimated_photos_for_range(
+        self,
+        *,
+        chat_id: int,
+        day_keys: list[str],
+    ) -> dict[str, list[StoredPhoto]]:
+        return {
+            day_key: await self.estimated_photos_for_day(
+                chat_id=chat_id, day_key=day_key
+            )
+            for day_key in day_keys
+        }
 
     async def daily_user_total(self, photo: Photo) -> int:
         return await self.daily_user_calories(
@@ -118,6 +131,31 @@ class RedisPhotoRepository:
             calories=_safe_int(raw.get("calories")),
             dish=raw.get("dish", ""),
             sent_at=_safe_datetime(raw.get("sent_at")),
+        )
+
+    async def update_meal_calories(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+        calories: int,
+    ) -> UpdatedMeal | None:
+        photo_key = _photo_key(chat_id, message_id)
+        raw = await self._redis.hgetall(photo_key)
+        if not raw:
+            return None
+
+        previous = _safe_int(raw.get("calories"))
+        await self._redis.hset(photo_key, "calories", calories)
+
+        return UpdatedMeal(
+            chat_id=chat_id,
+            message_id=message_id,
+            sender_label=raw.get("sender_label", ""),
+            day_key=raw.get("day", ""),
+            dish=raw.get("dish", ""),
+            calories=calories,
+            previous_calories=previous,
         )
 
     async def close(self) -> None:

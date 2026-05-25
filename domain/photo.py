@@ -89,6 +89,17 @@ class DeletedMeal:
     sent_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class UpdatedMeal:
+    chat_id: int
+    message_id: int
+    sender_label: str
+    day_key: str
+    dish: str
+    calories: int
+    previous_calories: int
+
+
 def _sender_label(sender: dict[str, Any]) -> str:
     username = sender.get("username")
     if username:
