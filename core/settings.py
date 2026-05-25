@@ -17,6 +17,7 @@ class Settings:
     openai_model: str
     timezone: ZoneInfo
     admin_api_secret: str | None
+    cron_secret: str | None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -32,6 +33,7 @@ class Settings:
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
             timezone=ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Kolkata")),
             admin_api_secret=os.getenv("ADMIN_API_SECRET") or None,
+            cron_secret=os.getenv("CRON_SECRET") or None,
         )
 
 
