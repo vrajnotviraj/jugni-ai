@@ -3,7 +3,7 @@ import logging
 from domain.analysis import FoodAnalysis
 from domain.photo import Photo
 from image_analyser.factory import ImageEstimator
-from presenters.photo_reply import format_photo_reply
+from presenters.photo_reply import PHOTO_REPLY_PARSE_MODE, format_photo_reply
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
 
@@ -85,6 +85,7 @@ async def _safely_reply(
             chat_id=photo.chat_id,
             text=reply,
             reply_to_message_id=photo.message_id,
+            parse_mode=PHOTO_REPLY_PARSE_MODE,
         )
         logger.info(
             "replied chat=%s msg=%s sender=%s total=%s",
