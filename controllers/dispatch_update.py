@@ -4,7 +4,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from controllers.build_day_report import build_day_report
-from controllers.delete_meal import delete_meal_for_sender
+from controllers.delete_meal import run_meal_deletion
 from controllers.handle_photo import handle_photo
 from controllers.send_day_report import send_day_report
 from image_analyser.factory import ImageEstimator
@@ -70,13 +70,26 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
                 target_message_id,
                 requester_sender_id,
             )
-            await delete_meal_for_sender(
+            if requester_sender_id is None:
+                return
+            owner_id = await deps.repo.meal_owner_id(
+                chat_id=chat_id, message_id=target_message_id
+            )
+            if owner_id != requester_sender_id:
+                logger.info(
+                    "ignoring /delete chat=%s msg=%s requester=%s owner=%s",
+                    chat_id,
+                    target_message_id,
+                    requester_sender_id,
+                    owner_id,
+                )
+                return
+            await run_meal_deletion(
                 repo=deps.repo,
                 telegram=deps.telegram,
                 timezone=deps.timezone,
                 chat_id=chat_id,
-                target_message_id=target_message_id,
-                requester_sender_id=requester_sender_id,
+                message_id=target_message_id,
             )
 
         case SummaryCommand(chat_id=chat_id):

@@ -106,17 +106,11 @@ class RedisPhotoRepository:
         *,
         chat_id: int,
         message_id: int,
-        expected_sender_id: int | None = None,
     ) -> DeletedMeal | None:
         photo_key = _photo_key(chat_id, message_id)
         raw = await self._redis.hgetall(photo_key)
         if not raw:
             return None
-
-        if expected_sender_id is not None:
-            stored_sender_id = _safe_int(raw.get("sender_id"))
-            if stored_sender_id != expected_sender_id:
-                return None
 
         sender_label = raw.get("sender_label", "")
         day_key = raw.get("day", "")
@@ -138,6 +132,20 @@ class RedisPhotoRepository:
             dish=raw.get("dish", ""),
             sent_at=_safe_datetime(raw.get("sent_at")),
         )
+
+    async def meal_owner_id(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+    ) -> int | None:
+        raw = await self._redis.hget(_photo_key(chat_id, message_id), "sender_id")
+        if raw in (None, ""):
+            return None
+        try:
+            return int(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
 
     async def update_meal_calories(
         self,

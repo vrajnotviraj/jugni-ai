@@ -14,11 +14,11 @@ from api.dependencies import (
     resolve_target_chat_id,
     verify_admin_secret,
 )
+from controllers.delete_meal import run_meal_deletion
+from controllers.meal_notifications import notify_meal_updated
 from core.dates import day_key_for_day_iso, today_day_key
 from core.settings import Settings
 from domain.photo import StoredPhoto
-from presenters.meal_deleted import MEAL_DELETED_PARSE_MODE, format_meal_deleted
-from presenters.meal_updated import MEAL_UPDATED_PARSE_MODE, format_meal_updated
 from presenters.meals_csv import CSV_MIME_TYPE, build_meals_csv, csv_filename
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
@@ -175,32 +175,21 @@ async def delete_meal(
     verify_admin_secret(settings, admin_secret)
     target_chat_id = resolve_target_chat_id(settings, chat_id)
 
-    deleted = await repo.delete_meal(chat_id=target_chat_id, message_id=message_id)
-    if deleted is None:
+    result = await run_meal_deletion(
+        repo=repo,
+        telegram=telegram,
+        timezone=settings.timezone,
+        chat_id=target_chat_id,
+        message_id=message_id,
+        notify=notify,
+    )
+    if result is None:
         raise HTTPException(
             status_code=404,
             detail=f"Meal {message_id} not found in chat {target_chat_id}.",
         )
 
-    new_total = await repo.daily_user_calories(
-        chat_id=target_chat_id,
-        day_key=deleted.day_key,
-        sender_label=deleted.sender_label,
-    )
-
-    notified = False
-    if notify:
-        notified = await _notify_meal_deleted(
-            telegram=telegram,
-            chat_id=target_chat_id,
-            sender_label=deleted.sender_label,
-            dish=deleted.dish,
-            calories=deleted.calories,
-            new_total_calories=new_total,
-            day_key=deleted.day_key,
-            today_key=today_day_key(settings.timezone),
-        )
-
+    deleted = result.deleted
     return {
         "ok": True,
         "chat_id": target_chat_id,
@@ -212,8 +201,8 @@ async def delete_meal(
             "calories": deleted.calories,
             "eaten_at": deleted.sent_at.isoformat() if deleted.sent_at else None,
         },
-        "new_total_calories": new_total,
-        "notified": notified,
+        "new_total_calories": result.new_total_calories,
+        "notified": result.notified,
     }
 
 
@@ -253,7 +242,7 @@ async def update_meal(
 
     notified = False
     if notify and updated.calories != updated.previous_calories:
-        notified = await _notify_meal_updated(
+        notified = await notify_meal_updated(
             telegram=telegram,
             chat_id=target_chat_id,
             sender_label=updated.sender_label,
@@ -279,70 +268,6 @@ async def update_meal(
         "new_total_calories": new_total,
         "notified": notified,
     }
-
-
-async def _notify_meal_deleted(
-    *,
-    telegram: TelegramBotApi,
-    chat_id: int,
-    sender_label: str,
-    dish: str,
-    calories: int,
-    new_total_calories: int,
-    day_key: str,
-    today_key: str,
-) -> bool:
-    text = format_meal_deleted(
-        sender_label=sender_label,
-        dish=dish,
-        calories=calories,
-        new_total_calories=new_total_calories,
-        day_key=day_key,
-        today_key=today_key,
-    )
-    try:
-        await telegram.send_message(chat_id, text, parse_mode=MEAL_DELETED_PARSE_MODE)
-    except Exception:
-        logger.exception(
-            "Failed to send meal-deleted notice chat=%s sender=%s",
-            chat_id,
-            sender_label,
-        )
-        return False
-    return True
-
-
-async def _notify_meal_updated(
-    *,
-    telegram: TelegramBotApi,
-    chat_id: int,
-    sender_label: str,
-    dish: str,
-    previous_calories: int,
-    new_calories: int,
-    new_total_calories: int,
-    day_key: str,
-    today_key: str,
-) -> bool:
-    text = format_meal_updated(
-        sender_label=sender_label,
-        dish=dish,
-        previous_calories=previous_calories,
-        new_calories=new_calories,
-        new_total_calories=new_total_calories,
-        day_key=day_key,
-        today_key=today_key,
-    )
-    try:
-        await telegram.send_message(chat_id, text, parse_mode=MEAL_UPDATED_PARSE_MODE)
-    except Exception:
-        logger.exception(
-            "Failed to send meal-updated notice chat=%s sender=%s",
-            chat_id,
-            sender_label,
-        )
-        return False
-    return True
 
 
 async def _send_csv_to_chat(

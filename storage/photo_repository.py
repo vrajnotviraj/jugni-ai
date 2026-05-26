@@ -47,10 +47,16 @@ class PhotoRepository(Protocol):
         *,
         chat_id: int,
         message_id: int,
-        expected_sender_id: int | None = None,
     ) -> DeletedMeal | None:
-        """Delete a stored meal and return its snapshot, or None if missing
-        or (when expected_sender_id is provided) the stored sender_id differs."""
+        """Delete a stored meal and return its snapshot, or None if missing."""
+
+    async def meal_owner_id(
+        self,
+        *,
+        chat_id: int,
+        message_id: int,
+    ) -> int | None:
+        """Return the stored sender_id for a meal, or None if absent."""
 
     async def update_meal_calories(
         self,

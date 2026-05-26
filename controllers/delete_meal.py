@@ -1,39 +1,35 @@
 import logging
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
+from controllers.meal_notifications import notify_meal_deleted
 from core.dates import today_day_key
-from presenters.meal_deleted import MEAL_DELETED_PARSE_MODE, format_meal_deleted
+from domain.photo import DeletedMeal
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
 
 logger = logging.getLogger(__name__)
 
 
-async def delete_meal_for_sender(
+@dataclass(frozen=True, slots=True)
+class MealDeletionResult:
+    deleted: DeletedMeal
+    new_total_calories: int
+    notified: bool
+
+
+async def run_meal_deletion(
     *,
     repo: PhotoRepository,
     telegram: TelegramBotApi,
     timezone: ZoneInfo,
     chat_id: int,
-    target_message_id: int,
-    requester_sender_id: int | None,
-) -> None:
-    if requester_sender_id is None:
-        return
-
-    deleted = await repo.delete_meal(
-        chat_id=chat_id,
-        message_id=target_message_id,
-        expected_sender_id=requester_sender_id,
-    )
+    message_id: int,
+    notify: bool = True,
+) -> MealDeletionResult | None:
+    deleted = await repo.delete_meal(chat_id=chat_id, message_id=message_id)
     if deleted is None:
-        logger.info(
-            "ignoring /delete chat=%s msg=%s requester=%s (missing or not owner)",
-            chat_id,
-            target_message_id,
-            requester_sender_id,
-        )
-        return
+        return None
 
     new_total = await repo.daily_user_calories(
         chat_id=chat_id,
@@ -41,19 +37,21 @@ async def delete_meal_for_sender(
         sender_label=deleted.sender_label,
     )
 
-    text = format_meal_deleted(
-        sender_label=deleted.sender_label,
-        dish=deleted.dish,
-        calories=deleted.calories,
-        new_total_calories=new_total,
-        day_key=deleted.day_key,
-        today_key=today_day_key(timezone),
-    )
-    try:
-        await telegram.send_message(chat_id, text, parse_mode=MEAL_DELETED_PARSE_MODE)
-    except Exception:
-        logger.exception(
-            "Failed to send meal-deleted notice chat=%s sender=%s",
-            chat_id,
-            deleted.sender_label,
+    notified = False
+    if notify:
+        notified = await notify_meal_deleted(
+            telegram=telegram,
+            chat_id=chat_id,
+            sender_label=deleted.sender_label,
+            dish=deleted.dish,
+            calories=deleted.calories,
+            new_total_calories=new_total,
+            day_key=deleted.day_key,
+            today_key=today_day_key(timezone),
         )
+
+    return MealDeletionResult(
+        deleted=deleted,
+        new_total_calories=new_total,
+        notified=notified,
+    )
