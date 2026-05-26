@@ -17,11 +17,18 @@ class SummaryCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class DeleteCommand:
+    chat_id: int
+    target_message_id: int
+    requester_sender_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class Ignore:
     pass
 
 
-ParsedUpdate = PhotoMessage | SummaryCommand | Ignore
+ParsedUpdate = PhotoMessage | SummaryCommand | DeleteCommand | Ignore
 
 
 def parse_update(update: dict[str, Any]) -> ParsedUpdate:
@@ -32,6 +39,10 @@ def parse_update(update: dict[str, Any]) -> ParsedUpdate:
 
     if _is_summary_command(message):
         return SummaryCommand(chat_id=int(message["chat"]["id"]))
+
+    delete_command = _parse_delete_command(message)
+    if delete_command is not None:
+        return delete_command
 
     photo = Photo.from_telegram_update(update)
     if photo is not None:
@@ -53,8 +64,27 @@ def _message_from_update(update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_summary_command(message: dict[str, Any]) -> bool:
+    return _leading_command(message) == "/summary"
+
+
+def _parse_delete_command(message: dict[str, Any]) -> "DeleteCommand | None":
+    if _leading_command(message) != "/delete":
+        return None
+
+    replied = message.get("reply_to_message") or {}
+    if not replied.get("photo"):
+        return None
+
+    sender = message.get("from") or {}
+    return DeleteCommand(
+        chat_id=int(message["chat"]["id"]),
+        target_message_id=int(replied["message_id"]),
+        requester_sender_id=sender.get("id"),
+    )
+
+
+def _leading_command(message: dict[str, Any]) -> str | None:
     text = message.get("text", "")
     if not text.strip():
-        return False
-    command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
-    return command == "/summary"
+        return None
+    return text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
