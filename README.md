@@ -100,13 +100,15 @@ Set these values:
 ```bash
 TELEGRAM_BOT_TOKEN=<your-telegram-bot-token>
 TELEGRAM_WEBHOOK_SECRET=make-this-long
-TELEGRAM_GROUP_CHAT_ID=-1001234567890
+TELEGRAM_GROUP_CHAT_ID=-1001234567890,-1009876543210
 OPENAI_API_KEY=<your-openai-api-key>
 OPENAI_MODEL=gpt-4.1-mini
 REDIS_URL=redis://localhost:6379/0
 APP_TIMEZONE=Asia/Kolkata
 ADMIN_API_SECRET=another-long-secret
 ```
+
+`TELEGRAM_GROUP_CHAT_ID` is a comma-separated list of group chat ids the bot serves. Add a new group's id to extend it; each group's meals and daily summary stay isolated.
 
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
 
@@ -175,7 +177,7 @@ Add the bot to the group, send any message, then check server logs for:
 webhook chat_id=-1001234567890
 ```
 
-Copy that value into `TELEGRAM_GROUP_CHAT_ID`.
+Add that value to `TELEGRAM_GROUP_CHAT_ID` (comma-separated for multiple groups).
 
 ## Webhook mode
 

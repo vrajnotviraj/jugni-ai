@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 class Settings:
     telegram_bot_token: str
     telegram_webhook_secret: str | None
-    telegram_group_chat_id: int | None
+    telegram_group_chat_ids: tuple[int, ...]
     telegram_polling_enabled: bool
     telegram_dry_run: bool
     redis_url: str
@@ -25,7 +25,7 @@ class Settings:
         return cls(
             telegram_bot_token=_required_env("TELEGRAM_BOT_TOKEN"),
             telegram_webhook_secret=os.getenv("TELEGRAM_WEBHOOK_SECRET"),
-            telegram_group_chat_id=_optional_int_env("TELEGRAM_GROUP_CHAT_ID"),
+            telegram_group_chat_ids=_int_tuple_env("TELEGRAM_GROUP_CHAT_ID"),
             telegram_polling_enabled=_bool_env("TELEGRAM_POLLING_ENABLED"),
             telegram_dry_run=_bool_env("TELEGRAM_DRY_RUN"),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
@@ -44,11 +44,9 @@ def _required_env(name: str) -> str:
     raise RuntimeError(f"Missing required environment variable: {name}")
 
 
-def _optional_int_env(name: str) -> int | None:
-    value = os.getenv(name)
-    if not value:
-        return None
-    return int(value) or None
+def _int_tuple_env(name: str) -> tuple[int, ...]:
+    raw = os.getenv(name) or ""
+    return tuple(int(t) for t in raw.split(",") if t.strip())
 
 
 def _bool_env(name: str) -> bool:

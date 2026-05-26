@@ -35,16 +35,16 @@ def get_deps(request: Request) -> Dependencies:
 
 
 def resolve_target_chat_id(settings: Settings, chat_id: int | None) -> int:
-    target = chat_id if chat_id is not None else settings.telegram_group_chat_id
-    if target:
-        return target
+    if chat_id:
+        return chat_id
+    configured = settings.telegram_group_chat_ids
+    if len(configured) == 1:
+        return configured[0]
     raise HTTPException(
         status_code=400,
         detail=(
-            "Missing or zero chat_id. Set TELEGRAM_GROUP_CHAT_ID to the group's "
-            "numeric id (groups are negative, e.g. -1001234567890) or pass "
-            "chat_id explicitly. Post any message in the group, then check "
-            "the server logs for 'webhook chat_id=...' to discover the id."
+            "Pass chat_id explicitly when TELEGRAM_GROUP_CHAT_ID has "
+            f"{len(configured)} groups configured."
         ),
     )
 

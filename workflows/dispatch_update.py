@@ -29,22 +29,21 @@ class Dependencies:
     day_summarizer: DaySummarizer
     telegram: TelegramBotApi
     timezone: ZoneInfo
-    configured_group_chat_id: int | None
+    allowed_chat_ids: tuple[int, ...]
 
 
 async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None:
     parsed = parse_update(update)
+    chat_id = _chat_id_of(parsed)
+    if chat_id is None:
+        return
+    if deps.allowed_chat_ids and chat_id not in deps.allowed_chat_ids:
+        logger.info("ignoring chat_id=%s (allowed=%s)", chat_id, deps.allowed_chat_ids)
+        return
+    logger.info("webhook chat_id=%s", chat_id)
 
     match parsed:
         case PhotoMessage(photo=photo):
-            if not _chat_is_allowed(photo.chat_id, deps.configured_group_chat_id):
-                logger.info(
-                    "ignoring update chat_id=%s (configured group is %s)",
-                    photo.chat_id,
-                    deps.configured_group_chat_id,
-                )
-                return
-            logger.info("webhook chat_id=%s", photo.chat_id)
             await handle_photo(
                 photo,
                 repo=deps.repo,
@@ -53,23 +52,9 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
             )
 
         case DeleteCommand(
-            chat_id=chat_id,
             target_message_id=target_message_id,
             requester_sender_id=requester_sender_id,
         ):
-            if not _chat_is_allowed(chat_id, deps.configured_group_chat_id):
-                logger.info(
-                    "ignoring chat_id=%s (configured group is %s)",
-                    chat_id,
-                    deps.configured_group_chat_id,
-                )
-                return
-            logger.info(
-                "webhook /delete chat=%s msg=%s requester=%s",
-                chat_id,
-                target_message_id,
-                requester_sender_id,
-            )
             if requester_sender_id is None:
                 return
             owner_id = await deps.repo.meal_owner_id(
@@ -92,15 +77,7 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
                 message_id=target_message_id,
             )
 
-        case SummaryCommand(chat_id=chat_id):
-            if not _chat_is_allowed(chat_id, deps.configured_group_chat_id):
-                logger.info(
-                    "ignoring chat_id=%s (configured group is %s)",
-                    chat_id,
-                    deps.configured_group_chat_id,
-                )
-                return
-            logger.info("webhook chat_id=%s", chat_id)
+        case SummaryCommand():
             report = await build_day_report(
                 repo=deps.repo,
                 day_summarizer=deps.day_summarizer,
@@ -110,11 +87,12 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
             )
             await send_day_report(telegram=deps.telegram, report=report)
 
+
+def _chat_id_of(parsed: PhotoMessage | SummaryCommand | DeleteCommand | Ignore) -> int | None:
+    match parsed:
+        case PhotoMessage(photo=photo):
+            return photo.chat_id
+        case SummaryCommand(chat_id=chat_id) | DeleteCommand(chat_id=chat_id):
+            return chat_id
         case Ignore():
-            return
-
-
-def _chat_is_allowed(chat_id: int, configured: int | None) -> bool:
-    if configured is None:
-        return True
-    return chat_id == configured
+            return None

@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
         day_summarizer=day_summarizer,
         telegram=telegram,
         timezone=settings.timezone,
-        configured_group_chat_id=settings.telegram_group_chat_id,
+        allowed_chat_ids=settings.telegram_group_chat_ids,
     )
 
     app.state.settings = settings
@@ -55,8 +55,8 @@ async def lifespan(app: FastAPI):
             )
         )
         logger.info(
-            "telegram polling enabled (group_chat_id=%s, dry_run=%s)",
-            settings.telegram_group_chat_id,
+            "telegram polling enabled (group_chat_ids=%s, dry_run=%s)",
+            list(settings.telegram_group_chat_ids) or "*",
             settings.telegram_dry_run,
         )
     else:
