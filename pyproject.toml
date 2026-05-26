@@ -32,17 +32,15 @@ py-modules = ["main"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
-    "ai*",
+    "analyzers*",
     "api*",
-    "controllers*",
     "core*",
     "domain*",
-    "image_analyser*",
+    "llm*",
     "presenters*",
     "storage*",
-    "summary_analyser*",
     "telegram*",
-    "users*",
+    "workflows*",
 ]
 
 [tool.ruff]
@@ -60,8 +58,8 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"image_analyser/prompts.py" = ["E501"]
-"summary_analyser/prompts.py" = ["E501"]
+"analyzers/image/prompts.py" = ["E501"]
+"analyzers/summary/prompts.py" = ["E501"]
 "presenters/day_summary.py" = ["E501"]
 "api/routes/*.py" = ["B008"]
 

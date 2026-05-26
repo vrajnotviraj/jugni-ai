@@ -1,9 +1,9 @@
 import json
 from typing import Any
 
-from ai.json_parsing import parse_fenced_json
+from analyzers.summary.prompts import GENERAL_DAY_NOTE_FALLBACK
 from domain.day import DayNote
-from summary_analyser.prompts import GENERAL_DAY_NOTE_FALLBACK
+from llm.json_parsing import parse_fenced_json
 
 
 def parse_day_note(raw_text: str) -> DayNote:

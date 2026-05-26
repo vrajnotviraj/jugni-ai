@@ -2,11 +2,11 @@ import asyncio
 import logging
 from zoneinfo import ZoneInfo
 
+from analyzers.summary.factory import DaySummarizer
 from core.dates import day_key_for_day_iso, today_day_key
+from domain.breakdown import daily_user_breakdown
 from domain.day import DayNote, DayReport
 from storage.photo_repository import PhotoRepository
-from summary_analyser.factory import DaySummarizer
-from users.breakdown import daily_user_breakdown
 
 logger = logging.getLogger(__name__)
 

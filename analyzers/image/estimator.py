@@ -2,13 +2,13 @@ import base64
 
 from openai import AsyncOpenAI
 
-from ai.openai_client import call_responses
-from domain.analysis import FoodAnalysis
-from image_analyser.parser import parse_food_analysis
-from image_analyser.prompts import (
+from analyzers.image.parser import parse_food_analysis
+from analyzers.image.prompts import (
     FOOD_ANALYSIS_SYSTEM_PROMPT,
     food_analysis_user_prompt,
 )
+from domain.analysis import FoodAnalysis
+from llm.openai_client import call_responses
 
 
 async def analyse_image(

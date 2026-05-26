@@ -2,11 +2,11 @@ import logging
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
-from controllers.meal_notifications import notify_meal_deleted
 from core.dates import today_day_key
 from domain.photo import DeletedMeal
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
+from workflows.meal_notifications import notify_meal_deleted
 
 logger = logging.getLogger(__name__)
 

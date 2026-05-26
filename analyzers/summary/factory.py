@@ -2,9 +2,9 @@ from dataclasses import dataclass
 
 from openai import AsyncOpenAI
 
+from analyzers.summary.summarizer import rerank_day_scores, write_day_note
 from core.settings import Settings
 from domain.day import DayNote, Meal
-from summary_analyser.summarizer import rerank_day_scores, write_day_note
 
 
 @dataclass(frozen=True, slots=True)

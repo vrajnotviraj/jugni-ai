@@ -3,9 +3,9 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from analyzers.image.estimator import analyse_image
 from core.settings import Settings
 from domain.analysis import FoodAnalysis
-from image_analyser.estimator import analyse_image
 
 ImageEstimator = Callable[..., Coroutine[Any, Any, FoodAnalysis]]
 

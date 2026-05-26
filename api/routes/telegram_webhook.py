@@ -6,8 +6,8 @@ from api.dependencies import (
     verify_webhook_secret,
     webhook_secret_header,
 )
-from controllers.dispatch_update import Dependencies, dispatch_update
 from core.settings import Settings
+from workflows.dispatch_update import Dependencies, dispatch_update
 
 router = APIRouter()
 

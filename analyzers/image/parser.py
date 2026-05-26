@@ -1,8 +1,8 @@
 import json
 
-from ai.json_parsing import parse_fenced_json
+from analyzers.image.prompts import GENERAL_TIP_FALLBACK
 from domain.analysis import FoodAnalysis
-from image_analyser.prompts import GENERAL_TIP_FALLBACK
+from llm.json_parsing import parse_fenced_json
 
 
 class CalorieEstimationError(RuntimeError):

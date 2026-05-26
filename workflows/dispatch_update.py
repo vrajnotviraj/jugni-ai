@@ -3,13 +3,9 @@ from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from controllers.build_day_report import build_day_report
-from controllers.delete_meal import run_meal_deletion
-from controllers.handle_photo import handle_photo
-from controllers.send_day_report import send_day_report
-from image_analyser.factory import ImageEstimator
+from analyzers.image.factory import ImageEstimator
+from analyzers.summary.factory import DaySummarizer
 from storage.photo_repository import PhotoRepository
-from summary_analyser.factory import DaySummarizer
 from telegram.api import TelegramBotApi
 from telegram.updates import (
     DeleteCommand,
@@ -18,6 +14,10 @@ from telegram.updates import (
     SummaryCommand,
     parse_update,
 )
+from workflows.build_day_report import build_day_report
+from workflows.delete_meal import run_meal_deletion
+from workflows.handle_photo import handle_photo
+from workflows.send_day_report import send_day_report
 
 logger = logging.getLogger(__name__)
 
