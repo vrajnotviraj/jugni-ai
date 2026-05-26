@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from analyzers.image.factory import ImageEstimator
 from api.dependencies import (
     admin_secret_header,
     get_image_estimator,
@@ -15,12 +16,11 @@ from api.dependencies import (
     resolve_target_chat_id,
     verify_admin_secret,
 )
-from controllers.handle_photo import handle_photo
 from core.settings import Settings
 from domain.photo import Photo
-from image_analyser.factory import ImageEstimator
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
+from workflows.handle_photo import handle_photo
 
 router = APIRouter()
 

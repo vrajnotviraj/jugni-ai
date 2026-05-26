@@ -1,8 +1,8 @@
 import logging
 
+from analyzers.image.factory import ImageEstimator
 from domain.analysis import FoodAnalysis
 from domain.photo import Photo
-from image_analyser.factory import ImageEstimator
 from presenters.photo_reply import PHOTO_REPLY_PARSE_MODE, format_photo_reply
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi

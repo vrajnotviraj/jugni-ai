@@ -2,12 +2,12 @@ import hmac
 
 from fastapi import Header, HTTPException, Request
 
-from controllers.dispatch_update import Dependencies
+from analyzers.image.factory import ImageEstimator
+from analyzers.summary.factory import DaySummarizer
 from core.settings import Settings
-from image_analyser.factory import ImageEstimator
 from storage.photo_repository import PhotoRepository
-from summary_analyser.factory import DaySummarizer
 from telegram.api import TelegramBotApi
+from workflows.dispatch_update import Dependencies
 
 
 def get_settings(request: Request) -> Settings:

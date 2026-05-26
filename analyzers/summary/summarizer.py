@@ -2,14 +2,14 @@ import logging
 
 from openai import AsyncOpenAI
 
-from ai.openai_client import call_responses
-from domain.day import DayNote, Meal
-from summary_analyser.parser import parse_day_note, parse_rerank_scores
-from summary_analyser.prompts import (
+from analyzers.summary.parser import parse_day_note, parse_rerank_scores
+from analyzers.summary.prompts import (
     DAY_RERANK_SYSTEM_PROMPT,
     DAY_SUMMARY_SYSTEM_PROMPT,
     GENERAL_DAY_NOTE_FALLBACK,
 )
+from domain.day import DayNote, Meal
+from llm.openai_client import call_responses
 
 logger = logging.getLogger(__name__)
 

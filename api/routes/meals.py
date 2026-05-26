@@ -14,14 +14,14 @@ from api.dependencies import (
     resolve_target_chat_id,
     verify_admin_secret,
 )
-from controllers.delete_meal import run_meal_deletion
-from controllers.meal_notifications import notify_meal_updated
 from core.dates import day_key_for_day_iso, today_day_key
 from core.settings import Settings
 from domain.photo import StoredPhoto
 from presenters.meals_csv import CSV_MIME_TYPE, build_meals_csv, csv_filename
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
+from workflows.delete_meal import run_meal_deletion
+from workflows.meal_notifications import notify_meal_updated
 
 logger = logging.getLogger(__name__)
 

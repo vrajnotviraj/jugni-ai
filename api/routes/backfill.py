@@ -9,10 +9,10 @@ from api.dependencies import (
     get_telegram,
     verify_admin_secret,
 )
-from controllers.dispatch_update import Dependencies, dispatch_update
 from core.settings import Settings
 from telegram.api import TelegramBotApi
 from telegram.backfill import backfill_cutoff_epoch, cutoff_iso, run_backfill
+from workflows.dispatch_update import Dependencies, dispatch_update
 
 router = APIRouter()
 

@@ -5,14 +5,14 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from openai import AsyncOpenAI
 
-from controllers.dispatch_update import Dependencies, dispatch_update
+from analyzers.image.factory import build_image_estimator
+from analyzers.summary.factory import build_day_summarizer
 from core.logging import configure_logging
 from core.settings import Settings
-from image_analyser.factory import build_image_estimator
 from storage.factory import build_photo_repository
-from summary_analyser.factory import build_day_summarizer
 from telegram.api import TelegramBotApi
 from telegram.poller import poll_telegram_forever
+from workflows.dispatch_update import Dependencies, dispatch_update
 
 configure_logging()
 logger = logging.getLogger(__name__)

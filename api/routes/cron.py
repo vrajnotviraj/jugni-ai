@@ -3,6 +3,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
+from analyzers.summary.factory import DaySummarizer
 from api.dependencies import (
     get_day_summarizer,
     get_repo,
@@ -10,12 +11,11 @@ from api.dependencies import (
     get_telegram,
     resolve_target_chat_id,
 )
-from controllers.build_day_report import build_day_report
-from controllers.send_day_report import send_day_report
 from core.settings import Settings
 from storage.photo_repository import PhotoRepository
-from summary_analyser.factory import DaySummarizer
 from telegram.api import TelegramBotApi
+from workflows.build_day_report import build_day_report
+from workflows.send_day_report import send_day_report
 
 logger = logging.getLogger(__name__)
 
