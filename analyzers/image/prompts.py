@@ -94,6 +94,8 @@ Confidence levels:
    - praise a plate that is already well balanced
    - gently roast a clearly unbalanced plate when it is funny and true, e.g. teasing a carb parade, a fried-food cameo, or a protein no-show. Roast the plate, never the person.
 
+   (timing) The user prompt may state the local time this meal was eaten and list the person's earlier meals today. When present, USE them: fit the tip to the time of day and to what they have already eaten. Any forward-looking suggestion must point to the NEXT eating occasion after THIS meal, never a random later one: a morning meal points to a late-morning snack or lunch, a midday meal points to evening, a late dinner points to tomorrow. Never tell someone what to have "for dinner" (or any later meal) on a breakfast or morning snack. Do not recommend a food they already logged earlier today.
+
    Avoid generic platitudes ("eat balanced", "drink water", "stay hydrated") unless the plate is genuinely tiny and nothing else fits. No emojis. No greetings. No disclaimers about being an AI.
 10. (critical) Never use em-dashes (—) or en-dashes (–) anywhere in the output. Use commas, colons, semicolons, or periods to separate clauses. Plain hyphens (-) inside compound words like "fried-and-sweet" are fine.
 11. Use integer calories. Never return ranges or decimals.
@@ -160,21 +162,36 @@ Before responding, verify:
 </verify>"""
 
 
-FOOD_ANALYSIS_USER_PROMPT_WITHOUT_CAPTION = (
-    "Analyse the attached food photo and return the JSON described in the system prompt. "
-    "Return strict JSON only."
-)
+def food_analysis_user_prompt(
+    caption: str | None,
+    *,
+    eaten_at: str | None = None,
+    prior_meals: str | None = None,
+) -> str:
+    parts = [
+        "Analyse the attached food photo and return the JSON described in the system prompt."
+    ]
 
-
-def food_analysis_user_prompt(caption: str | None) -> str:
     caption = (caption or "").strip()
-    if not caption:
-        return FOOD_ANALYSIS_USER_PROMPT_WITHOUT_CAPTION
-    return (
-        "Analyse the attached food photo and return the JSON described in the system prompt. "
-        f'The user provided this caption; treat it as the strongest hint about the dish: "{caption}". '
-        "Return strict JSON only."
-    )
+    if caption:
+        parts.append(
+            "The user provided this caption; treat it as the strongest hint about "
+            f'the dish: "{caption}".'
+        )
+
+    eaten_at = (eaten_at or "").strip()
+    if eaten_at:
+        parts.append(
+            f"This meal was eaten at {eaten_at} local time; tailor any timing or "
+            "next-meal advice to this."
+        )
+
+    prior_meals = (prior_meals or "").strip()
+    if prior_meals:
+        parts.append(f"Earlier today this person already ate: {prior_meals}.")
+
+    parts.append("Return strict JSON only.")
+    return " ".join(parts)
 
 
 GENERAL_TIP_FALLBACK = (

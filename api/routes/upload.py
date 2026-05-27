@@ -87,6 +87,7 @@ async def upload_food_photo(
         repo=repo,
         image_estimator=image_estimator,
         telegram=telegram,
+        timezone=settings.timezone,
         image_bytes=image_bytes,
         media_type=media_type,
     )

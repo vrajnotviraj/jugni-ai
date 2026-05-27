@@ -49,6 +49,7 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
                 repo=deps.repo,
                 image_estimator=deps.image_estimator,
                 telegram=deps.telegram,
+                timezone=deps.timezone,
             )
 
         case DeleteCommand(

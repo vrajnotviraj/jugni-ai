@@ -1,8 +1,10 @@
 import logging
+from zoneinfo import ZoneInfo
 
 from analyzers.image.factory import ImageEstimator
+from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.photo import Photo
+from domain.photo import Photo, StoredPhoto
 from presenters.photo_reply import PHOTO_REPLY_PARSE_MODE, format_photo_reply
 from storage.photo_repository import PhotoRepository
 from telegram.api import TelegramBotApi
@@ -16,6 +18,7 @@ async def handle_photo(
     repo: PhotoRepository,
     image_estimator: ImageEstimator,
     telegram: TelegramBotApi,
+    timezone: ZoneInfo,
     image_bytes: bytes | None = None,
     media_type: str | None = None,
 ) -> FoodAnalysis | None:
@@ -34,8 +37,21 @@ async def handle_photo(
         telegram, photo, image_bytes, media_type
     )
 
+    day_key = day_key_for_datetime(photo.sent_at, timezone)
+    eaten_at = photo.sent_at.astimezone(timezone).strftime("%H:%M")
+    prior = await repo.estimated_photos_for_user_day(
+        chat_id=photo.chat_id, day_key=day_key, sender_label=photo.sender_label
+    )
+    prior_meals = _format_prior_meals(prior, timezone)
+
     try:
-        analysis = await image_estimator(image_bytes, media_type, photo.caption)
+        analysis = await image_estimator(
+            image_bytes,
+            media_type,
+            photo.caption,
+            eaten_at=eaten_at,
+            prior_meals=prior_meals,
+        )
     except Exception as error:
         logger.exception(
             "failed to analyse photo chat=%s msg=%s",
@@ -59,6 +75,21 @@ async def handle_photo(
     reply = format_photo_reply(photo.sender_label, analysis, daily_total)
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis
+
+
+def _format_prior_meals(photos: list[StoredPhoto], timezone: ZoneInfo) -> str:
+    parts: list[str] = []
+    for stored in photos:
+        if not stored.dish:
+            continue
+        time_label = (
+            stored.sent_at.astimezone(timezone).strftime("%H:%M")
+            if stored.sent_at
+            else ""
+        )
+        prefix = f"{time_label} " if time_label else ""
+        parts.append(f"{prefix}{stored.dish} ({stored.calories} kcal)")
+    return "; ".join(parts)
 
 
 async def _ensure_image_bytes(

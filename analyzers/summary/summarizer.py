@@ -8,7 +8,7 @@ from analyzers.summary.prompts import (
     DAY_SUMMARY_SYSTEM_PROMPT,
     GENERAL_DAY_NOTE_FALLBACK,
 )
-from domain.day import DayNote, Meal
+from domain.day import DayNote, Meal, describe_meal_coverage
 from llm.openai_client import call_responses
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ async def write_day_note(
     *,
     model: str,
     meals: list[Meal],
+    as_of: str = "",
 ) -> DayNote:
     if not meals:
         return DayNote(summary="", health_score=0)
@@ -28,8 +29,11 @@ async def write_day_note(
     if not formatted_meals:
         return DayNote(summary=GENERAL_DAY_NOTE_FALLBACK, health_score=5)
 
+    timing_line = f"Timing context: {as_of} " if as_of else ""
     user_prompt = (
         f"Meals today (chronological): [{formatted_meals}]. Total: {total} kcal. "
+        f"Meal-period coverage: {describe_meal_coverage(meals)}. "
+        f"{timing_line}"
         "Return the JSON described in the system prompt."
     )
 
@@ -51,6 +55,7 @@ async def rerank_day_scores(
     *,
     model: str,
     users: list[tuple[str, list[Meal], DayNote]],
+    as_of: str = "",
 ) -> dict[str, int]:
     fallback = {label: note.health_score for label, _, note in users}
 
@@ -67,6 +72,7 @@ async def rerank_day_scores(
             f"User: {label}\n"
             f"  Total: {total} kcal\n"
             f"  Meals (chronological): [{formatted}]\n"
+            f"  Meal-period coverage: {describe_meal_coverage(meals)}\n"
             f"  Draft score: {note.health_score}\n"
             f"  Draft summary: {note.summary}"
         )
@@ -74,9 +80,11 @@ async def rerank_day_scores(
     if len(blocks) < 2:
         return fallback
 
+    timing_line = f"Timing context: {as_of}\n\n" if as_of else ""
     user_prompt = (
         "Calibrate the following users' health scores against each other "
         "according to the system prompt. Return one entry per user.\n\n"
+        f"{timing_line}"
         + "\n\n".join(blocks)
     )
 

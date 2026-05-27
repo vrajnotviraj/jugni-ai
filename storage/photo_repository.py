@@ -30,6 +30,15 @@ class PhotoRepository(Protocol):
     ) -> dict[str, list[StoredPhoto]]:
         """Return estimated photos keyed by local day for the requested days."""
 
+    async def estimated_photos_for_user_day(
+        self,
+        *,
+        chat_id: int,
+        day_key: str,
+        sender_label: str,
+    ) -> list[StoredPhoto]:
+        """Return one user's estimated meals for a local day, oldest first."""
+
     async def daily_user_total(self, photo: Photo) -> int:
         """Return the running calorie total for this photo's sender today."""
 

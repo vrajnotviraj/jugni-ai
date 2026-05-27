@@ -1,11 +1,57 @@
 from dataclasses import dataclass
 
+# Meal-period windows by local hour: breakfast < 11:00, lunch 11:00-16:59,
+# dinner >= 17:00. Used to measure how complete a logged day is.
+_BREAKFAST_END = 11
+_LUNCH_END = 17
+
 
 @dataclass(frozen=True, slots=True)
 class Meal:
     dish: str
     calories: int
     eaten_at: str
+
+
+def _meal_hour(eaten_at: str | None) -> int | None:
+    text = (eaten_at or "").strip()
+    if ":" not in text:
+        return None
+    try:
+        return int(text.split(":", 1)[0])
+    except ValueError:
+        return None
+
+
+def meal_period_flags(meals: "tuple[Meal, ...] | list[Meal]") -> dict[str, bool]:
+    flags = {"breakfast": False, "lunch": False, "dinner": False}
+    for meal in meals:
+        if not meal.dish:
+            continue
+        hour = _meal_hour(meal.eaten_at)
+        if hour is None:
+            continue
+        if hour < _BREAKFAST_END:
+            flags["breakfast"] = True
+        elif hour < _LUNCH_END:
+            flags["lunch"] = True
+        else:
+            flags["dinner"] = True
+    return flags
+
+
+def meal_periods_covered(meals: "tuple[Meal, ...] | list[Meal]") -> int:
+    return sum(meal_period_flags(meals).values())
+
+
+def describe_meal_coverage(meals: "tuple[Meal, ...] | list[Meal]") -> str:
+    flags = meal_period_flags(meals)
+    logged = sum(1 for meal in meals if meal.dish)
+    marks = ", ".join(
+        f"{name} {'present' if present else 'MISSING'}"
+        for name, present in flags.items()
+    )
+    return f"{marks} ({sum(flags.values())} of 3 periods, {logged} meal(s) logged)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,8 +101,9 @@ class DayReport:
         notes: list[DayNote],
         total_photos: int,
     ) -> "DayReport":
-        # Build per-user summaries from parallel lists (zip preserves alignment).
-        summaries: list[UserDaySummary] = []
+        # Build per-user summaries, carrying meal-period coverage alongside each
+        # so the ranking can break score ties in favour of more complete days.
+        enriched: list[tuple[UserDaySummary, int]] = []
         for user, note in zip(users, notes, strict=True):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
@@ -68,25 +115,27 @@ class DayReport:
                 for meal in user.meals
                 if meal.dish
             )
-            summaries.append(
-                UserDaySummary(
-                    sender_label=user.sender_label,
-                    calories=user.calories,
-                    dishes=dishes,
-                    meals_timeline=timeline,
-                    summary=note.summary,
-                    health_score=note.health_score,
-                    rank=0,
-                )
+            summary = UserDaySummary(
+                sender_label=user.sender_label,
+                calories=user.calories,
+                dishes=dishes,
+                meals_timeline=timeline,
+                summary=note.summary,
+                health_score=note.health_score,
+                rank=0,
             )
+            enriched.append((summary, meal_periods_covered(user.meals)))
 
-        # Rank by healthiness — highest score first. Tiebreak by lower calories,
-        # then alphabetically by sender_label so the order is deterministic.
-        summaries.sort(
-            key=lambda u: (
-                -u.health_score,
-                u.calories,
-                u.sender_label.removeprefix("@").casefold(),
+        # Rank by healthiness — highest score first. On a score tie, the more
+        # complete day wins (more meal periods covered) so honest full-day logging
+        # is never beaten by a cherry-picked subset. Lower calories then
+        # alphabetical sender_label keep the order deterministic.
+        enriched.sort(
+            key=lambda e: (
+                -e[0].health_score,
+                -e[1],
+                e[0].calories,
+                e[0].sender_label.removeprefix("@").casefold(),
             )
         )
         ranked = tuple(
@@ -99,7 +148,7 @@ class DayReport:
                 health_score=u.health_score,
                 rank=index,
             )
-            for index, u in enumerate(summaries, start=1)
+            for index, (u, _periods) in enumerate(enriched, start=1)
         )
 
         return cls(

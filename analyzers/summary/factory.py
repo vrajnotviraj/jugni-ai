@@ -12,14 +12,20 @@ class DaySummarizer:
     client: AsyncOpenAI
     model: str
 
-    async def __call__(self, meals: list[Meal]) -> DayNote:
-        return await write_day_note(self.client, model=self.model, meals=meals)
+    async def __call__(self, meals: list[Meal], *, as_of: str = "") -> DayNote:
+        return await write_day_note(
+            self.client, model=self.model, meals=meals, as_of=as_of
+        )
 
     async def rerank(
         self,
         users: list[tuple[str, list[Meal], DayNote]],
+        *,
+        as_of: str = "",
     ) -> dict[str, int]:
-        return await rerank_day_scores(self.client, model=self.model, users=users)
+        return await rerank_day_scores(
+            self.client, model=self.model, users=users, as_of=as_of
+        )
 
 
 def build_day_summarizer(

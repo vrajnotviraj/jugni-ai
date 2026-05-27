@@ -21,9 +21,9 @@ Meal-timing heuristics (apply when timing data is present):
 </context>
 
 <rules>
-1. summary: 2-3 short sentences. First, give an overall read of the day's eating (what dominated, balance, timing pattern). Then call out macro and micro standouts (protein, carbs, fat, fibre; key micros like iron, calcium, vitamin C, magnesium) — name 1-2 strengths and 1-2 gaps. End with one concrete next-meal action (specific food or swap). No emojis, no greetings, no disclaimers, no raw calorie numbers.
+1. summary: 2-3 short sentences. First, give an overall read of the day's eating (what dominated, balance, timing pattern). Then call out macro and micro standouts (protein, carbs, fat, fibre; key micros like iron, calcium, vitamin C, magnesium) — name 1-2 strengths and 1-2 gaps. End with one concrete action, whose framing depends on the "Timing context" provided in the input: if the day is still IN PROGRESS, suggest a next-meal action for today (specific food or swap); if the day is OVER (late night or a past day), DO NOT tell them to eat now or "at your next meal" — instead give one takeaway to carry into tomorrow (e.g., "tomorrow, start with..."). No emojis, no greetings, no disclaimers, no raw calorie numbers.
 2. Tailor to THIS user's dishes — vary suggestions across users, do not default to the same recommendation (e.g., "add curd") every time.
-3. If only 1-2 items so far, frame as "so far today" and focus on what to add at the next meal.
+3. If only 1-2 items AND the day is still IN PROGRESS, frame as "so far today" and focus on what to add at the next meal. If the day is OVER, do not use "so far" — describe it as the finished day it was.
 4. If meal times are present, weave timing into the read (e.g., "late-night sugar", "skipped breakfast", "good early protein") when relevant.
 5. health_score: integer 1-10. The score must REFLECT THE QUALITY OF THE DAY, not split the difference. Most days should NOT land at 5 — use the full 1-10 range.
 
@@ -42,6 +42,7 @@ Meal-timing heuristics (apply when timing data is present):
    - Late-night heavy or fried meal after 21:30: -1.
    - Two or more snack-style farsan/mamra/biscuit entries: -1.
    - Added sugar dominates one or more meals (jalebi, gulab jamun, syrup-heavy, sweetened drinks): -1.
+   - Incomplete day: the input includes a "Meal-period coverage" line for breakfast/lunch/dinner. Count only meal periods that have ALREADY PASSED per the "Timing context" (if the day is still in progress, a not-yet-arrived period is not a gap). Of the elapsed periods, only two of three covered: -1. Only one covered (a single-meal-style day) once two or more periods have passed: -2. A logged day that skips meal periods that already passed is not a healthy full day — score it as the incomplete day it is, not as a clean light day.
 
    REWARDS (stack, then clamp to 1-10):
    - Real veg/salad/shaak in at least one meal: +1.
@@ -93,19 +94,24 @@ The group eats mostly Gujarati food. A typical day's score should reflect: macro
 <calibration_rules>
 1. Use the full 1-10 range. Do not cluster scores. If 4+ users ate noticeably differently, the scores should span at least a 4-point range across the group.
 2. Two users may only receive the same score if their days are genuinely equivalent in quality. Otherwise differentiate.
-3. Rank by FOOD QUALITY first, calorie load second:
-   - A small (~500 kcal), balanced, protein-and-veg-touching day beats a 2500 kcal carb-heavy day.
+3. MEAL-PERIOD COMPLETENESS IS A FIRST-CLASS RANKING FACTOR. Each user's block includes a "Meal-period coverage" line stating which of breakfast/lunch/dinner were logged (the windows are breakfast before 11:00, lunch 11:00-16:59, dinner from 17:00). A "Timing context" line states whether the day is OVER or still IN PROGRESS. The completeness caps below count only meal periods that have ALREADY PASSED — if the day is still in progress, do not penalise a user for a period that has not yet arrived (e.g. missing dinner at 15:00 is not a gap). This group is a calorie-tracking game where the goal is to log your WHOLE day. A user who logged a complete day must not be beaten by a user who logged only a flattering meal or two:
+   - A day covering all three periods (breakfast + lunch + dinner) is a complete day. It must rank ABOVE any incomplete day of comparable or worse food quality, even if the incomplete day's one logged meal looks clean.
+   - One-period day (only one of breakfast/lunch/dinner logged): cap at 4. One logged meal is not a healthy day — it is an incomplete one, and a single clean meal must never out-score an honest full day.
+   - Two-period day: cap at 7.
+   - These completeness caps apply on top of the quality caps in rule 5 (lowest applicable cap wins).
+4. Among COMPLETE days (all three periods), rank purely on food quality and calorie load per the rules below — completeness no longer separates them.
+5. Rank by FOOD QUALITY first, calorie load second:
+   - A small (~500 kcal), balanced, protein-and-veg-touching COMPLETE day beats a 2500 kcal carb-heavy day.
    - A 2500 kcal day that DOES include real protein in multiple meals, salad/veg, and reasonable timing beats a 1200 kcal day that is white bread + chips + ketchup.
    - Two carb-heavy days: the one with veg + protein + better timing wins.
-4. Hard caps (lowest applicable wins):
+6. Quality hard caps (lowest applicable wins):
    - Day where >50% of calories come from junk/ultra-processed items (white bread, packaged chips/wafers, instant noodles, sweet sodas): cap at 3.
    - Skipped breakfast AND skipped lunch (first real meal after 16:00): cap at 4.
    - Single-meal day >700 kcal that is refined carbs + fat with no veg or quality protein: cap at 4.
    - >2500 kcal without proportionate protein/fibre/veg: cap at 6.
-   - Very light day (<500 kcal) with no quality protein yet and it's already late: cap at 5.
-5. Rewards stack (then clamp 1-10): real veg/salad in ≥1 meal (+1), quality protein in ≥2 meals (+1), balanced timing first-by-10:00 & last-by-21:30 & no >6h gap (+1), genuine food-group variety 4+ of {cereal, pulse, veg, fruit, dairy, animal protein} (+1).
-6. The draft scores are advisory only. Override them when calibration demands it.
-7. Tiebreak in your head: when two users feel equivalent, prefer lower junk share, then earlier first meal, then lower total calories.
+7. Rewards stack (then clamp 1-10, but never above an applicable cap): real veg/salad in ≥1 meal (+1), quality protein in ≥2 meals (+1), balanced timing first-by-10:00 & last-by-21:30 & no >6h gap (+1), genuine food-group variety 4+ of {cereal, pulse, veg, fruit, dairy, animal protein} (+1).
+8. The draft scores are advisory only. Override them when calibration demands it.
+9. Tiebreak in your head: when two users feel equivalent, prefer the more complete day (more meal periods covered), then lower junk share, then earlier first meal, then lower total calories.
 </calibration_rules>
 
 <output_rules>

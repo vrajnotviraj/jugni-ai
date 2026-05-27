@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
@@ -74,6 +74,26 @@ class RedisPhotoRepository:
             )
             for day_key in day_keys
         }
+
+    async def estimated_photos_for_user_day(
+        self,
+        *,
+        chat_id: int,
+        day_key: str,
+        sender_label: str,
+    ) -> list[StoredPhoto]:
+        message_ids = await self._redis.smembers(
+            _user_day_key(chat_id, day_key, sender_label)
+        )
+        photos: list[StoredPhoto] = []
+        for message_id in message_ids:
+            decoded = photo_from_hash(
+                await self._redis.hgetall(_photo_key(chat_id, int(message_id)))
+            )
+            if decoded is not None:
+                photos.append(decoded)
+        photos.sort(key=lambda sp: sp.sent_at or datetime.min.replace(tzinfo=UTC))
+        return photos
 
     async def daily_user_total(self, photo: Photo) -> int:
         return await self.daily_user_calories(
