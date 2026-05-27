@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from analyzers.summary.factory import DaySummarizer
 from core.dates import day_key_for_day_iso, summary_time_context, today_day_key
 from domain.breakdown import daily_user_breakdown
-from domain.day import DayNote, DayReport
+from domain.day import DayReport
 from storage.photo_repository import PhotoRepository
 
 logger = logging.getLogger(__name__)
@@ -34,41 +34,11 @@ async def build_day_report(
     notes = await asyncio.gather(
         *(day_summarizer(list(user.meals), as_of=time_context) for user in users)
     )
-    notes_list = list(notes)
-
-    calibrated_notes = await _calibrate_scores(
-        day_summarizer, users, notes_list, as_of=time_context
-    )
 
     return DayReport.assemble(
         chat_id,
         day_key,
         users,
-        calibrated_notes,
+        list(notes),
         total_photos=len(photos),
     )
-
-
-async def _calibrate_scores(
-    day_summarizer: DaySummarizer,
-    users,
-    notes: list[DayNote],
-    *,
-    as_of: str,
-) -> list[DayNote]:
-    if len(users) < 2:
-        return notes
-
-    rerank_input = [
-        (user.sender_label, list(user.meals), note)
-        for user, note in zip(users, notes, strict=True)
-    ]
-    score_by_label = await day_summarizer.rerank(rerank_input, as_of=as_of)
-
-    return [
-        DayNote(
-            summary=note.summary,
-            health_score=score_by_label.get(user.sender_label, note.health_score),
-        )
-        for user, note in zip(users, notes, strict=True)
-    ]

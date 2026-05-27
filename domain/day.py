@@ -44,16 +44,6 @@ def meal_periods_covered(meals: "tuple[Meal, ...] | list[Meal]") -> int:
     return sum(meal_period_flags(meals).values())
 
 
-def describe_meal_coverage(meals: "tuple[Meal, ...] | list[Meal]") -> str:
-    flags = meal_period_flags(meals)
-    logged = sum(1 for meal in meals if meal.dish)
-    marks = ", ".join(
-        f"{name} {'present' if present else 'MISSING'}"
-        for name, present in flags.items()
-    )
-    return f"{marks} ({sum(flags.values())} of 3 periods, {logged} meal(s) logged)"
-
-
 @dataclass(frozen=True, slots=True)
 class UserDay:
     sender_label: str
