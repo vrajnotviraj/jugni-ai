@@ -7,7 +7,7 @@ from analyzers.summary.prompts import (
     DAY_SUMMARY_SYSTEM_PROMPT,
     GENERAL_DAY_NOTE_FALLBACK,
 )
-from domain.day import DayNote, Meal
+from domain.day import DayMacros, DayNote, Meal
 from domain.scoring import compute_day_score
 from llm.openai_client import call_responses
 
@@ -29,9 +29,24 @@ async def write_day_note(
     if not formatted_meals:
         return DayNote(summary=GENERAL_DAY_NOTE_FALLBACK, health_score=5)
 
+    macros = DayMacros.from_meals(meals)
+    # Suppress the macro line when no photos in the day carry macro data
+    # (e.g. legacy photos predating the macro-aware photo analyzer). Showing
+    # the LLM a row of zeros invites prose that calls out the missing data.
+    macro_line = ""
+    if any(
+        (m.protein_g or m.carb_g or m.fat_g or m.fibre_g or m.added_sugar_g or m.sat_fat_g)
+        for m in meals
+    ):
+        macro_line = (
+            f"Macros today: protein {macros.protein_g}g, carb {macros.carb_g}g, "
+            f"fat {macros.fat_g}g, fibre {macros.fibre_g}g, added sugar "
+            f"{macros.added_sugar_g}g, saturated fat {macros.sat_fat_g}g. "
+        )
     timing_line = f"Timing context: {as_of} " if as_of else ""
     user_prompt = (
         f"Meals today (chronological): [{formatted_meals}]. Total: {total} kcal. "
+        f"{macro_line}"
         f"{timing_line}"
         "Return the JSON described in the system prompt."
     )
@@ -48,7 +63,10 @@ async def write_day_note(
         logger.exception("day summary note generation failed")
         return DayNote(summary=GENERAL_DAY_NOTE_FALLBACK, health_score=5)
 
-    return DayNote(summary=summary, health_score=compute_day_score(signals, meals))
+    return DayNote(
+        summary=summary,
+        health_score=compute_day_score(signals, meals, macros),
+    )
 
 
 def _format_meal(meal: Meal) -> str:

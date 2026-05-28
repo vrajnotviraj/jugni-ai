@@ -8,6 +8,7 @@ async def call_responses(
     system: str,
     user: str,
     image_data_url: str | None = None,
+    tools: list[dict[str, object]] | None = None,
 ) -> str:
     user_content: list[dict[str, object]] = [{"type": "input_text", "text": user}]
     if image_data_url is not None:
@@ -19,11 +20,15 @@ async def call_responses(
             }
         )
 
-    response = await client.responses.create(
-        model=model,
-        input=[
+    kwargs: dict[str, object] = {
+        "model": model,
+        "input": [
             {"role": "system", "content": [{"type": "input_text", "text": system}]},
             {"role": "user", "content": user_content},
         ],
-    )
+    }
+    if tools:
+        kwargs["tools"] = tools
+
+    response = await client.responses.create(**kwargs)
     return response.output_text

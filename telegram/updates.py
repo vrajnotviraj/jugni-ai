@@ -60,7 +60,7 @@ def chat_type_is_group(update: dict[str, Any]) -> bool:
 
 
 def _message_from_update(update: dict[str, Any]) -> dict[str, Any]:
-    return update.get("message") or update.get("edited_message") or {}
+    return update.get("message") or {}
 
 
 def _is_summary_command(message: dict[str, Any]) -> bool:

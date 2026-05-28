@@ -37,6 +37,12 @@ def analysis_to_fields(analysis: FoodAnalysis) -> dict[str, Any]:
         "confidence": analysis.confidence,
         "tip": analysis.tip,
         "is_food": 1 if analysis.is_food else 0,
+        "protein_g": analysis.protein_g,
+        "carb_g": analysis.carb_g,
+        "fat_g": analysis.fat_g,
+        "fibre_g": analysis.fibre_g,
+        "added_sugar_g": analysis.added_sugar_g,
+        "sat_fat_g": analysis.sat_fat_g,
     }
 
 
@@ -67,7 +73,22 @@ def photo_from_hash(raw: dict[str, Any]) -> StoredPhoto | None:
         message_id=int(raw["message_id"]),
         dish=raw.get("dish", ""),
         sent_at=sent_at,
+        protein_g=_macro_int(raw.get("protein_g")),
+        carb_g=_macro_int(raw.get("carb_g")),
+        fat_g=_macro_int(raw.get("fat_g")),
+        fibre_g=_macro_int(raw.get("fibre_g")),
+        added_sugar_g=_macro_int(raw.get("added_sugar_g")),
+        sat_fat_g=_macro_int(raw.get("sat_fat_g")),
     )
+
+
+def _macro_int(value: Any) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _parse_sent_at(value: str | None) -> datetime | None:

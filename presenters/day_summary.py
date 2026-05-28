@@ -51,7 +51,9 @@ def _build_sections(report: DayReport) -> list[str]:
 def _format_user_block(user: UserDaySummary) -> str:
     header = (
         f"{_rank_icon(user.rank)} <b>{escape(user.sender_label, quote=False)}</b>"
-        f"  ·  🔥 {user.calories} kcal  ·  {_score_emoji(user.health_score)} {user.health_score}/10"
+        f"  ·  🍽️ {user.meal_periods_covered}/3"
+        f"  ·  🔥 {user.calories} kcal"
+        f"  ·  {_score_emoji(user.health_score)} {user.health_score}/10"
     )
 
     meal_lines = [_format_meal_line(meal) for meal in user.meals_timeline]
