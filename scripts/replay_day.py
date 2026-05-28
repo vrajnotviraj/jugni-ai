@@ -77,8 +77,10 @@ FIXTURE: list[tuple[str, list[Meal], FoodSignals]] = [
         [
             m("2 methi theplas with ghee and tea", 340, "09:04",
               p=10, c=40, f=15, fb=4, asu=4, sf=4),
-            m("Rice with dahi, dal-peanuts, chokha, samosa, farali pattice", 1090, "13:32",
-              p=30, c=130, f=45, fb=12, asu=0, sf=15),
+            m(
+                "Rice with dahi, dal-peanuts, chokha, samosa, farali pattice",
+                1090, "13:32", p=30, c=130, f=45, fb=12, asu=0, sf=15,
+            ),
             m("1 kesar mango slices", 150, "13:32",
               p=1, c=37, f=0, fb=3, asu=0, sf=0),
             m("Rice flour roti with chole and mango", 550, "20:37",
@@ -94,8 +96,10 @@ FIXTURE: list[tuple[str, list[Meal], FoodSignals]] = [
     (
         "@divyeshvartha",
         [
-            m("Overnight oats with yoghurt, milk, chia and sunflower seeds", 510, "08:57",
-              p=20, c=55, f=18, fb=10, asu=2, sf=4),
+            m(
+                "Overnight oats with yoghurt, milk, chia and sunflower seeds",
+                510, "08:57", p=20, c=55, f=18, fb=10, asu=2, sf=4,
+            ),
             m("Indian chai tea", 35, "11:46", p=1, c=5, f=1, fb=0, asu=4, sf=1),
             m("Rice with sambar, rasam, chana, curd, papad", 830, "13:52",
               p=28, c=120, f=18, fb=12, asu=0, sf=5),
@@ -154,8 +158,10 @@ FIXTURE: list[tuple[str, list[Meal], FoodSignals]] = [
               p=5, c=40, f=8, fb=2, asu=8, sf=3),
             m("Masala chai", 150, "06:56", p=3, c=12, f=6, fb=0, asu=8, sf=3),
             m("5 egg omelette", 430, "14:54", p=35, c=4, f=30, fb=0, asu=0, sf=8),
-            m("Chicken and egg curry with keri chhundo, 2 whole wheat roti", 760, "18:59",
-              p=42, c=60, f=32, fb=6, asu=10, sf=8),
+            m(
+                "Chicken and egg curry with keri chhundo, 2 whole wheat roti",
+                760, "18:59", p=42, c=60, f=32, fb=6, asu=10, sf=8,
+            ),
             m("250 ml milk with 3 Marie biscuits", 210, "19:24",
               p=10, c=25, f=8, fb=0, asu=5, sf=5),
         ],
