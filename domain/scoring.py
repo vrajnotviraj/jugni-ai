@@ -62,10 +62,23 @@ def compute_day_score(
         _adequacy_points(signals)
         + _moderation_points(signals)
         + _timing_points(meals)
-        + _macro_adequacy_points(macros)
-        + _macro_moderation_points(macros, kcal)
     )
+    if _has_macro_data(meals):
+        quality += _macro_adequacy_points(macros)
+        quality += _macro_moderation_points(macros, kcal)
+    else:
+        # Legacy/zero-macro day: macros were never estimated. Give a neutral
+        # mid-range contribution so the day is not punished for missing data
+        # rather than for actually unbalanced eating.
+        quality += 15
     return max(1, round(quality / 10))
+
+
+def _has_macro_data(meals: list[Meal]) -> bool:
+    return any(
+        meal.protein_g or meal.carb_g or meal.fat_g or meal.fibre_g
+        for meal in meals
+    )
 
 
 def _adequacy_points(s: FoodSignals) -> int:

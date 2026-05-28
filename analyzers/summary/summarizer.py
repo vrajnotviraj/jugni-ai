@@ -30,11 +30,19 @@ async def write_day_note(
         return DayNote(summary=GENERAL_DAY_NOTE_FALLBACK, health_score=5)
 
     macros = DayMacros.from_meals(meals)
-    macro_line = (
-        f"Macros today: protein {macros.protein_g}g, carb {macros.carb_g}g, "
-        f"fat {macros.fat_g}g, fibre {macros.fibre_g}g, added sugar "
-        f"{macros.added_sugar_g}g, saturated fat {macros.sat_fat_g}g. "
-    )
+    # Suppress the macro line when no photos in the day carry macro data
+    # (e.g. legacy photos predating the macro-aware photo analyzer). Showing
+    # the LLM a row of zeros invites prose that calls out the missing data.
+    macro_line = ""
+    if any(
+        (m.protein_g or m.carb_g or m.fat_g or m.fibre_g or m.added_sugar_g or m.sat_fat_g)
+        for m in meals
+    ):
+        macro_line = (
+            f"Macros today: protein {macros.protein_g}g, carb {macros.carb_g}g, "
+            f"fat {macros.fat_g}g, fibre {macros.fibre_g}g, added sugar "
+            f"{macros.added_sugar_g}g, saturated fat {macros.sat_fat_g}g. "
+        )
     timing_line = f"Timing context: {as_of} " if as_of else ""
     user_prompt = (
         f"Meals today (chronological): [{formatted_meals}]. Total: {total} kcal. "
