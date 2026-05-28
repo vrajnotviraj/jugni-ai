@@ -7,7 +7,7 @@ from analyzers.summary.prompts import (
     DAY_SUMMARY_SYSTEM_PROMPT,
     GENERAL_DAY_NOTE_FALLBACK,
 )
-from domain.day import DayNote, Meal
+from domain.day import DayMacros, DayNote, Meal
 from domain.scoring import compute_day_score
 from llm.openai_client import call_responses
 
@@ -48,7 +48,11 @@ async def write_day_note(
         logger.exception("day summary note generation failed")
         return DayNote(summary=GENERAL_DAY_NOTE_FALLBACK, health_score=5)
 
-    return DayNote(summary=summary, health_score=compute_day_score(signals, meals))
+    macros = DayMacros.from_meals(meals)
+    return DayNote(
+        summary=summary,
+        health_score=compute_day_score(signals, meals, macros),
+    )
 
 
 def _format_meal(meal: Meal) -> str:
