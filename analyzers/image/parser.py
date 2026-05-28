@@ -38,4 +38,19 @@ def parse_food_analysis(raw_text: str) -> FoodAnalysis:
         confidence=confidence,
         tip=tip,
         is_food=is_food,
+        protein_g=_macro_int(payload.get("protein_g")),
+        carb_g=_macro_int(payload.get("carb_g")),
+        fat_g=_macro_int(payload.get("fat_g")),
+        fibre_g=_macro_int(payload.get("fibre_g")),
+        added_sugar_g=_macro_int(payload.get("added_sugar_g")),
+        sat_fat_g=_macro_int(payload.get("sat_fat_g")),
     )
+
+
+def _macro_int(value: object) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return max(0, int(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0

@@ -11,3 +11,9 @@ class FoodAnalysis:
     confidence: Confidence
     tip: str
     is_food: bool
+    protein_g: int = 0
+    carb_g: int = 0
+    fat_g: int = 0
+    fibre_g: int = 0
+    added_sugar_g: int = 0
+    sat_fat_g: int = 0
