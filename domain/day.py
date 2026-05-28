@@ -107,6 +107,7 @@ class UserDaySummary:
     summary: str
     health_score: int
     rank: int
+    meal_periods_covered: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,8 +127,8 @@ class DayReport:
         total_photos: int,
     ) -> "DayReport":
         # Build per-user summaries, carrying meal-period coverage alongside each
-        # so the ranking can break score ties in favour of more complete days.
-        enriched: list[tuple[UserDaySummary, int]] = []
+        # for a hard two-tier ranking.
+        summaries: list[UserDaySummary] = []
         for user, note in zip(users, notes, strict=True):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
@@ -139,27 +140,30 @@ class DayReport:
                 for meal in user.meals
                 if meal.dish
             )
-            summary = UserDaySummary(
-                sender_label=user.sender_label,
-                calories=user.calories,
-                dishes=dishes,
-                meals_timeline=timeline,
-                summary=note.summary,
-                health_score=note.health_score,
-                rank=0,
+            summaries.append(
+                UserDaySummary(
+                    sender_label=user.sender_label,
+                    calories=user.calories,
+                    dishes=dishes,
+                    meals_timeline=timeline,
+                    summary=note.summary,
+                    health_score=note.health_score,
+                    rank=0,
+                    meal_periods_covered=meal_periods_covered(user.meals),
+                )
             )
-            enriched.append((summary, meal_periods_covered(user.meals)))
 
-        # Rank by healthiness — highest score first. On a score tie, the more
-        # complete day wins (more meal periods covered) so honest full-day logging
-        # is never beaten by a cherry-picked subset. Lower calories then
-        # alphabetical sender_label keep the order deterministic.
-        enriched.sort(
-            key=lambda e: (
-                -e[0].health_score,
-                -e[1],
-                e[0].calories,
-                e[0].sender_label.removeprefix("@").casefold(),
+        # Hard two-tier rank: meal-period coverage first (3 > 2 > 1 > 0), then
+        # health score within each tier. An honest 3-meal day always beats any
+        # 2-meal day, regardless of score — this is the product's game-theory
+        # intent: reward logging breakfast, lunch, AND dinner. Lower calories
+        # then alphabetical sender_label keep the order deterministic.
+        summaries.sort(
+            key=lambda u: (
+                -u.meal_periods_covered,
+                -u.health_score,
+                u.calories,
+                u.sender_label.removeprefix("@").casefold(),
             )
         )
         ranked = tuple(
@@ -171,8 +175,9 @@ class DayReport:
                 summary=u.summary,
                 health_score=u.health_score,
                 rank=index,
+                meal_periods_covered=u.meal_periods_covered,
             )
-            for index, (u, _periods) in enumerate(enriched, start=1)
+            for index, u in enumerate(summaries, start=1)
         )
 
         return cls(
