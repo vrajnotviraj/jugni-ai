@@ -19,6 +19,12 @@ def daily_user_breakdown(
             dish=photo.dish.strip(),
             calories=photo.calories,
             eaten_at=_format_local_time(photo.sent_at, timezone),
+            protein_g=photo.protein_g,
+            carb_g=photo.carb_g,
+            fat_g=photo.fat_g,
+            fibre_g=photo.fibre_g,
+            added_sugar_g=photo.added_sugar_g,
+            sat_fat_g=photo.sat_fat_g,
         )
         if photo.sender_label not in accumulator:
             accumulator[photo.sender_label] = []
