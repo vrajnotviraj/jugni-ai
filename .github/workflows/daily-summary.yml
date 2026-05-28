@@ -1,0 +1,21 @@
+name: Daily summary
+
+on:
+  schedule:
+    # 17:00 UTC = 22:30 IST (10:30 PM)
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit the daily-summary endpoint
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail --show-error --silent \
+            --max-time 300 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$CRON_URL"
