@@ -71,7 +71,9 @@ def compute_day_score(
         # mid-range contribution so the day is not punished for missing data
         # rather than for actually unbalanced eating.
         quality += 15
-    return max(1, round(quality / 10))
+    # Half-up rounding (not Python's default banker's rounding, which would
+    # push quality=25/45/65/85 down a band) and a defensive [1, 10] clamp.
+    return max(1, min(10, (quality + 5) // 10))
 
 
 def _has_macro_data(meals: list[Meal]) -> bool:
