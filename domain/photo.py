@@ -25,7 +25,7 @@ class Photo:
 
     @classmethod
     def from_telegram_update(cls, update: dict[str, Any]) -> "Photo | None":
-        message = update.get("message") or update.get("edited_message") or {}
+        message = update.get("message") or {}
         photos = message.get("photo") or []
         if not photos:
             return None
@@ -76,6 +76,12 @@ class StoredPhoto:
     message_id: int
     dish: str
     sent_at: datetime | None
+    protein_g: int = 0
+    carb_g: int = 0
+    fat_g: int = 0
+    fibre_g: int = 0
+    added_sugar_g: int = 0
+    sat_fat_g: int = 0
 
 
 @dataclass(frozen=True, slots=True)
