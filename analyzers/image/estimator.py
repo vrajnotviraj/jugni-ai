@@ -30,6 +30,7 @@ async def analyse_image(
         ),
         image_data_url=_image_data_url(image_bytes, media_type),
         tools=[{"type": "web_search"}],
+        cache_key="food-analysis",
     )
     return parse_food_analysis(raw)
 

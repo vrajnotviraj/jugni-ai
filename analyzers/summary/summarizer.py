@@ -57,6 +57,7 @@ async def write_day_note(
             model=model,
             system=DAY_SUMMARY_SYSTEM_PROMPT,
             user=user_prompt,
+            cache_key="day-summary",
         )
         summary, signals = parse_day_signals(raw)
     except Exception:
