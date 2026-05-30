@@ -64,6 +64,7 @@ select = [
 "analyzers/context/prompts.py" = ["E501"]
 "presenters/day_summary.py" = ["E501"]
 "api/routes/*.py" = ["B008"]
+"evals/*.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
