@@ -3,6 +3,7 @@ import base64
 from openai import AsyncOpenAI
 
 from analyzers.image.parser import parse_food_analysis
+from analyzers.image.preprocess import downscale_image
 from analyzers.image.prompts import (
     FOOD_ANALYSIS_SYSTEM_PROMPT,
     food_analysis_user_prompt,
@@ -23,6 +24,11 @@ async def analyse_image(
     personal_context: str | None = None,
     personal_goal: str | None = None,
 ) -> FoodAnalysis:
+    # Cap the longest side so the patch-based vision model bills fewer image
+    # tokens; this is the single boundary before OpenAI, so every caller (bot,
+    # evals, API routes) benefits. Best-effort: it falls back to the original
+    # bytes on any failure.
+    image_bytes, media_type = downscale_image(image_bytes, media_type)
     raw = await call_responses(
         client,
         model=model,
