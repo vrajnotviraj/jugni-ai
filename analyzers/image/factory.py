@@ -24,6 +24,8 @@ def build_image_estimator(
         *,
         eaten_at: str | None = None,
         prior_meals: str | None = None,
+        personal_context: str | None = None,
+        personal_goal: str | None = None,
     ) -> FoodAnalysis:
         return await analyse_image(
             openai_client,
@@ -33,6 +35,8 @@ def build_image_estimator(
             caption=caption,
             eaten_at=eaten_at,
             prior_meals=prior_meals,
+            personal_context=personal_context,
+            personal_goal=personal_goal,
         )
 
     return estimator

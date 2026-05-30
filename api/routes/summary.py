@@ -7,6 +7,7 @@ from analyzers.summary.factory import DaySummarizer
 from api.dependencies import (
     admin_secret_header,
     get_day_summarizer,
+    get_profile_repo,
     get_repo,
     get_settings,
     get_telegram,
@@ -15,6 +16,7 @@ from api.dependencies import (
 )
 from core.settings import Settings
 from storage.photo_repository import PhotoRepository
+from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from workflows.build_day_report import build_day_report
 from workflows.send_day_report import send_day_report
@@ -32,6 +34,7 @@ async def get_day_summary(
     send: bool = Query(default=False, description="Also send the summary to Telegram."),
     settings: Settings = Depends(get_settings),
     repo: PhotoRepository = Depends(get_repo),
+    profile_repo: ProfileRepository = Depends(get_profile_repo),
     day_summarizer: DaySummarizer = Depends(get_day_summarizer),
     telegram: TelegramBotApi = Depends(get_telegram),
     admin_secret: str | None = Depends(admin_secret_header),
@@ -41,6 +44,7 @@ async def get_day_summary(
 
     report = await build_day_report(
         repo=repo,
+        profile_repo=profile_repo,
         day_summarizer=day_summarizer,
         chat_id=target_chat_id,
         day_iso=date,

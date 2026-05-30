@@ -73,6 +73,7 @@ def photo_from_hash(raw: dict[str, Any]) -> StoredPhoto | None:
         message_id=int(raw["message_id"]),
         dish=raw.get("dish", ""),
         sent_at=sent_at,
+        sender_id=_sender_id(raw.get("sender_id")),
         protein_g=_macro_int(raw.get("protein_g")),
         carb_g=_macro_int(raw.get("carb_g")),
         fat_g=_macro_int(raw.get("fat_g")),
@@ -80,6 +81,15 @@ def photo_from_hash(raw: dict[str, Any]) -> StoredPhoto | None:
         added_sugar_g=_macro_int(raw.get("added_sugar_g")),
         sat_fat_g=_macro_int(raw.get("sat_fat_g")),
     )
+
+
+def _sender_id(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _macro_int(value: Any) -> int:

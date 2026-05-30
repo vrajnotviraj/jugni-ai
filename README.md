@@ -72,6 +72,41 @@ There should also be a preference page.
 
 Each user should be able to save regular recipes, default portions, diet rules, goal weight, current weight, and calorie target. If your dinner is usually 2 rotis, dal, sabzi, and chaas, you should set that once. The bot should stop asking the same question like it has short-term memory loss.
 
+## Personal profile (DM)
+
+Each person can keep a private profile by messaging the bot directly (a 1:1 DM,
+never in the group). Profiles are global per person, keyed by Telegram user id,
+and shared across every group. Commands appear automatically in the Telegram
+command menu
+
+| Command          | What it does                                                                                       | Example                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `/profile`       | View your profile, or set it in plain words (an LLM extracts height, weight, age, sex, activity, goal, diet, timezone) | `/profile 5ft9, 72 kg, 31M, gym 4x a week, vegetarian, want to lose fat` |
+| `/addcontext`    | Add a standing note respected in every future photo estimate (an LLM folds it into your notes, keeping them concise and deduped) | `/addcontext my chundo has no sugar`                 |
+| `/seecontext`    | List your saved context notes                                                                      | `/seecontext`                                        |
+| `/deleteprofile` | Delete your profile, context, and weight history                                                   | `/deleteprofile`                                     |
+
+Notes:
+
+- **Privacy.** Profile data (height/weight/goal) lives only in your DM and is
+  never shown in a group.
+- **Dietary preferences.** Tell the bot how you eat and it keeps every tip and
+  daily note inside those limits, never suggesting a food you avoid. Set it on
+  your profile (`/profile vegetarian, no eggs`) or as a standing note
+  (`/addcontext no eggs`). A vegetarian gets nudged toward paneer, tofu, or
+  sprouts for protein, never eggs, chicken, or fish.
+- **Weight history.** Every weight you enter stamps your latest reading and is
+  also appended to an append-only history, kept for future trend analysis.
+- **Calorie target.** Goal-aware tips and the daily ranking use a realistic
+  calorie target (Mifflin-St Jeor from weight, and height/age/sex when given,
+  times an activity factor; an average/moderate lifestyle is assumed if you do
+  not state one). The surplus/deficit are capped so gain or loss goals stay
+  realistic. Without a weight set, the bot falls back to its default logic.
+- **Timezone.** Set yours (e.g. `/profile I'm in London`) and photo tips and the
+  daily summary's "is your day over?" judgment use your own clock.
+  Day bucketing for the group leaderboard stays on the app timezone. Unset means
+  the app timezone is used, so nothing changes for you until you set it
+
 ## Setup
 
 You need 3 things:
@@ -112,7 +147,7 @@ ADMIN_API_SECRET=another-long-secret
 
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
 
-`ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, and `/api/backfill`. When it is set, send it as `X-Admin-API-Secret`.
+`ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, and `/api/profiles`. When it is set, send it as `X-Admin-API-Secret`.
 
 Keep `.env` private. Commit `.env.example`.
 
@@ -145,10 +180,15 @@ curl -X POST http://localhost:8000/api/upload \
   -H "X-Admin-API-Secret: another-long-secret" \
   -F image=@./plate.jpg \
   -F user_label=@vraj \
-  -F caption="2 theplas with chai"
+  -F caption="2 theplas with chai" \
+  -F user_id=4242
 ```
 
 `caption` helps the model. Use it for portion clues, hidden ingredients, or the thing the photo makes ambiguous.
+
+`user_id` is optional. Pass a real Telegram user id to link the upload to that
+person's profile, so context notes and their timezone shape the estimate and tip
+exactly as they would for a real group photo. Leave it unset for an anonymous upload.
 
 ## Daily summary
 

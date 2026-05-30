@@ -74,6 +74,14 @@ def meal_periods_covered(meals: "tuple[Meal, ...] | list[Meal]") -> int:
     return sum(meal_period_flags(meals).values())
 
 
+def _calorie_distance(user: "UserDaySummary") -> int:
+    # Closer to the person's realistic calorie target ranks higher. Without a
+    # target (no profile or no weight) keep the old "lower calories first" rule.
+    if user.calorie_target is None:
+        return user.calories
+    return abs(user.calories - user.calorie_target)
+
+
 @dataclass(frozen=True, slots=True)
 class UserDay:
     sender_label: str
@@ -108,6 +116,7 @@ class UserDaySummary:
     health_score: int
     rank: int
     meal_periods_covered: int = 0
+    calorie_target: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,11 +134,13 @@ class DayReport:
         users: list[UserDay],
         notes: list[DayNote],
         total_photos: int,
+        calorie_targets: list[int | None] | None = None,
     ) -> "DayReport":
         # Build per-user summaries, carrying meal-period coverage alongside each
         # for a hard two-tier ranking.
+        targets = calorie_targets or [None] * len(users)
         summaries: list[UserDaySummary] = []
-        for user, note in zip(users, notes, strict=True):
+        for user, note, target in zip(users, notes, targets, strict=True):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
                 MealTimeline(
@@ -150,19 +161,22 @@ class DayReport:
                     health_score=note.health_score,
                     rank=0,
                     meal_periods_covered=meal_periods_covered(user.meals),
+                    calorie_target=target,
                 )
             )
 
         # Hard two-tier rank: meal-period coverage first (3 > 2 > 1 > 0), then
         # health score within each tier. An honest 3-meal day always beats any
         # 2-meal day, regardless of score — this is the product's game-theory
-        # intent: reward logging breakfast, lunch, AND dinner. Lower calories
-        # then alphabetical sender_label keep the order deterministic.
+        # intent: reward logging breakfast, lunch, AND dinner. The next tiebreak
+        # is calorie-target adherence (closest to the person's realistic target
+        # wins); without a target it falls back to lower-calories-first. Alphabetical
+        # sender_label keeps the order deterministic.
         summaries.sort(
             key=lambda u: (
                 -u.meal_periods_covered,
                 -u.health_score,
-                u.calories,
+                _calorie_distance(u),
                 u.sender_label.removeprefix("@").casefold(),
             )
         )
@@ -176,6 +190,7 @@ class DayReport:
                 health_score=u.health_score,
                 rank=index,
                 meal_periods_covered=u.meal_periods_covered,
+                calorie_target=u.calorie_target,
             )
             for index, u in enumerate(summaries, start=1)
         )

@@ -133,6 +133,18 @@ class TelegramBotApi:
                 f"Telegram sendDocument failed ({response.status_code}): {description}"
             )
 
+    async def set_my_commands(self, commands: list[dict[str, str]]) -> None:
+        if self._dry_run:
+            print(
+                f"\n[DRY-RUN telegram] setMyCommands count={len(commands)}\n"
+                + "\n".join(f"  /{c['command']} - {c['description']}" for c in commands)
+                + "\n"
+            )
+            logger.info("dry-run setMyCommands count=%s", len(commands))
+            return
+
+        await self._call("setMyCommands", {"commands": commands})
+
     async def _call(self, method: str, payload: dict[str, object]) -> dict:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(f"{self._base_url}/{method}", json=payload)

@@ -20,13 +20,19 @@ async def analyse_image(
     caption: str | None = None,
     eaten_at: str | None = None,
     prior_meals: str | None = None,
+    personal_context: str | None = None,
+    personal_goal: str | None = None,
 ) -> FoodAnalysis:
     raw = await call_responses(
         client,
         model=model,
         system=FOOD_ANALYSIS_SYSTEM_PROMPT,
         user=food_analysis_user_prompt(
-            caption, eaten_at=eaten_at, prior_meals=prior_meals
+            caption,
+            eaten_at=eaten_at,
+            prior_meals=prior_meals,
+            personal_context=personal_context,
+            personal_goal=personal_goal,
         ),
         image_data_url=_image_data_url(image_bytes, media_type),
         tools=[{"type": "web_search"}],
