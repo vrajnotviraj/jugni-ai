@@ -12,9 +12,21 @@ class DaySummarizer:
     client: AsyncOpenAI
     model: str
 
-    async def __call__(self, meals: list[Meal], *, as_of: str = "") -> DayNote:
+    async def __call__(
+        self,
+        meals: list[Meal],
+        *,
+        as_of: str = "",
+        goal: str | None = None,
+        dietary: str | None = None,
+    ) -> DayNote:
         return await write_day_note(
-            self.client, model=self.model, meals=meals, as_of=as_of
+            self.client,
+            model=self.model,
+            meals=meals,
+            as_of=as_of,
+            goal=goal,
+            dietary=dietary,
         )
 
 

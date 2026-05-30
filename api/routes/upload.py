@@ -10,6 +10,7 @@ from analyzers.image.factory import ImageEstimator
 from api.dependencies import (
     admin_secret_header,
     get_image_estimator,
+    get_profile_repo,
     get_repo,
     get_settings,
     get_telegram,
@@ -19,6 +20,7 @@ from api.dependencies import (
 from core.settings import Settings
 from domain.photo import Photo
 from storage.photo_repository import PhotoRepository
+from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from workflows.handle_photo import handle_photo
 
@@ -36,6 +38,11 @@ async def upload_food_photo(
     user_label: str = Form(...),
     chat_id: int | None = Form(default=None),
     caption: str | None = Form(default=None),
+    user_id: int | None = Form(
+        default=None,
+        description="Telegram user id to link this upload to a profile "
+        "(context + timezone). Leave unset for an anonymous upload.",
+    ),
     time: str | None = Form(
         default=None,
         description="Local HH:MM the food was eaten.",
@@ -43,6 +50,7 @@ async def upload_food_photo(
     settings: Settings = Depends(get_settings),
     telegram: TelegramBotApi = Depends(get_telegram),
     repo: PhotoRepository = Depends(get_repo),
+    profile_repo: ProfileRepository = Depends(get_profile_repo),
     image_estimator: ImageEstimator = Depends(get_image_estimator),
     admin_secret: str | None = Depends(admin_secret_header),
 ) -> dict[str, Any]:
@@ -80,11 +88,13 @@ async def upload_food_photo(
         sender_label=sender_label,
         caption=photo_caption,
         sent_at=sent_at,
+        sender_id=user_id,
     )
 
     analysis = await handle_photo(
         photo,
         repo=repo,
+        profile_repo=profile_repo,
         image_estimator=image_estimator,
         telegram=telegram,
         timezone=settings.timezone,

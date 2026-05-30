@@ -20,6 +20,8 @@ async def write_day_note(
     model: str,
     meals: list[Meal],
     as_of: str = "",
+    goal: str | None = None,
+    dietary: str | None = None,
 ) -> DayNote:
     if not meals:
         return DayNote(summary="", health_score=0)
@@ -35,7 +37,10 @@ async def write_day_note(
     # the LLM a row of zeros invites prose that calls out the missing data.
     macro_line = ""
     if any(
-        (m.protein_g or m.carb_g or m.fat_g or m.fibre_g or m.added_sugar_g or m.sat_fat_g)
+        (
+            m.protein_g or m.carb_g or m.fat_g
+            or m.fibre_g or m.added_sugar_g or m.sat_fat_g
+        )
         for m in meals
     ):
         macro_line = (
@@ -44,9 +49,15 @@ async def write_day_note(
             f"{macros.added_sugar_g}g, saturated fat {macros.sat_fat_g}g. "
         )
     timing_line = f"Timing context: {as_of} " if as_of else ""
+    goal_line = f"This person's goal: {goal}. " if goal else ""
+    # Dietary notes bound any food the summary suggests; see rule 1c in the prompt.
+    dietary = (dietary or "").strip()
+    dietary_line = f"Dietary notes: {dietary}. " if dietary else ""
     user_prompt = (
         f"Meals today (chronological): [{formatted_meals}]. Total: {total} kcal. "
         f"{macro_line}"
+        f"{goal_line}"
+        f"{dietary_line}"
         f"{timing_line}"
         "Return the JSON described in the system prompt."
     )

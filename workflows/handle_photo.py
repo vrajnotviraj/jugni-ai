@@ -4,10 +4,13 @@ from zoneinfo import ZoneInfo
 from analyzers.image.factory import ImageEstimator
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
+from domain.calorie_target import goal_summary
 from domain.photo import Photo, StoredPhoto
 from presenters.photo_reply import PHOTO_REPLY_PARSE_MODE, format_photo_reply
 from storage.photo_repository import PhotoRepository
+from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
+from workflows.personalization import dietary_facts
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,7 @@ async def handle_photo(
     image_estimator: ImageEstimator,
     telegram: TelegramBotApi,
     timezone: ZoneInfo,
+    profile_repo: ProfileRepository | None = None,
     image_bytes: bytes | None = None,
     media_type: str | None = None,
 ) -> FoodAnalysis | None:
@@ -37,12 +41,33 @@ async def handle_photo(
         telegram, photo, image_bytes, media_type
     )
 
+    # Personalization is best-effort and forward-looking: senderless uploads
+    # (sender_id is None) and people without a profile see today's exact behavior.
+    profile = await _load_profile(profile_repo, photo)
+    # Day bucketing stays on the app timezone (group summary coherence, KTD6);
+    # only the tip's clock follows the sender's own timezone.
+    user_zone = profile.zone(timezone) if profile else timezone
+
     day_key = day_key_for_datetime(photo.sent_at, timezone)
-    eaten_at = photo.sent_at.astimezone(timezone).strftime("%H:%M")
+    eaten_at = photo.sent_at.astimezone(user_zone).strftime("%H:%M")
     prior = await repo.estimated_photos_for_user_day(
         chat_id=photo.chat_id, day_key=day_key, sender_label=photo.sender_label
     )
-    prior_meals = _format_prior_meals(prior, timezone)
+    prior_meals = _format_prior_meals(prior, user_zone)
+    personal_context = await dietary_facts(profile, profile_repo, photo.sender_id)
+    personal_goal = goal_summary(profile)
+
+    logger.info(
+        "photo context msg=%s sender_id=%s has_profile=%s goal=%r tz=%s "
+        "context_chars=%s prior_meals=%s",
+        photo.message_id,
+        photo.sender_id,
+        profile is not None,
+        personal_goal,
+        user_zone.key,
+        len(personal_context) if personal_context else 0,
+        bool(prior_meals),
+    )
 
     try:
         analysis = await image_estimator(
@@ -51,6 +76,8 @@ async def handle_photo(
             photo.caption,
             eaten_at=eaten_at,
             prior_meals=prior_meals,
+            personal_context=personal_context,
+            personal_goal=personal_goal,
         )
     except Exception as error:
         logger.exception(
@@ -75,6 +102,15 @@ async def handle_photo(
     reply = format_photo_reply(photo.sender_label, analysis, daily_total)
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis
+
+
+async def _load_profile(
+    profile_repo: ProfileRepository | None,
+    photo: Photo,
+):
+    if profile_repo is None or photo.sender_id is None:
+        return None
+    return await profile_repo.get_profile(photo.sender_id)
 
 
 def _format_prior_meals(photos: list[StoredPhoto], timezone: ZoneInfo) -> str:

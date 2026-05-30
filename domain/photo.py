@@ -54,13 +54,17 @@ class Photo:
         sender_label: str,
         caption: str | None,
         sent_at: datetime | None = None,
+        sender_id: int | None = None,
     ) -> "Photo":
+        # sender_id is optional: pass a real Telegram user id to link the upload to
+        # that person's profile (context + timezone); leave it None for an
+        # anonymous local upload that gets today's default behavior.
         synthetic_message_id = -int(time.time() * 1000)
         return cls(
             update_id=0,
             chat_id=chat_id,
             message_id=synthetic_message_id,
-            sender_id=None,
+            sender_id=sender_id,
             sender_label=sender_label,
             sent_at=sent_at or datetime.now(tz=UTC),
             file_id=f"local:{synthetic_message_id}",
@@ -76,6 +80,7 @@ class StoredPhoto:
     message_id: int
     dish: str
     sent_at: datetime | None
+    sender_id: int | None = None
     protein_g: int = 0
     carb_g: int = 0
     fat_g: int = 0

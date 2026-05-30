@@ -6,6 +6,7 @@ from analyzers.image.factory import ImageEstimator
 from analyzers.summary.factory import DaySummarizer
 from core.settings import Settings
 from storage.photo_repository import PhotoRepository
+from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from workflows.dispatch_update import Dependencies
 
@@ -20,6 +21,10 @@ def get_telegram(request: Request) -> TelegramBotApi:
 
 def get_repo(request: Request) -> PhotoRepository:
     return request.app.state.repo
+
+
+def get_profile_repo(request: Request) -> ProfileRepository:
+    return request.app.state.profile_repo
 
 
 def get_image_estimator(request: Request) -> ImageEstimator:
