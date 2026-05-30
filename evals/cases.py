@@ -112,7 +112,9 @@ class Day:
         print(f"  {self._step_no}. {text}")
 
     def _id(self, user: str) -> int:
-        return self._ids.setdefault(user, self._world.user_id(len(self._ids)))
+        if user not in self._ids:
+            self._ids[user] = self._world.user_id(len(self._ids))
+        return self._ids[user]
 
     def _time(self, photo: Path) -> str:
         windows = SNACK_WINDOWS if photo.name.lower().startswith("s_") else MEAL_WINDOWS
