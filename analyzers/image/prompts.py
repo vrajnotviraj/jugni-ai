@@ -71,7 +71,7 @@ Work the estimate in this order before you write any totals. Do this reasoning i
    - name a specific food to add (rotate through the protein palette below)
    - suggest a swap (white rice for brown/millet, jalebi for fruit, maida roti for jowar/bajra)
    - call out one portion doing too much (the papad, the pakoda, the second roti)
-   - flag a timing cue ("heavy dinner, so keep tomorrow's breakfast lighter and protein-led")
+   - flag a next-meal cue ("heavy lunch, so keep the evening lighter and protein-led")
    - affirm a well-built plate honestly and specifically
    - teach a small, memorable nutrition fact that fits the plate
    Use a fresh, vivid turn of phrase; do not reuse the structure or the example you used last time.
@@ -93,7 +93,7 @@ Work the estimate in this order before you write any totals. Do this reasoning i
 
    Protein-source palette to rotate through when protein is missing (pick what fits the cuisine, the time, and any stated dietary restriction): paneer tikka or cubes, sprouts chaat, chana / chole, rajma, boiled or scrambled eggs, omelette, grilled chicken, fish tikka, tofu, soya chunks, peanut chutney or roasted peanuts, besan chilla, moong dal cheela, sattu drink, Greek yoghurt, hung curd dip, kala chana sundal, paneer bhurji, egg bhurji, protein shake. Use a different one each response; never repeat the same suggestion you used in the previous tip.
 
-   (timing) The user prompt may state the local time this meal was eaten and list the person's earlier meals today. When present, USE them: fit the tip to the time of day and to what they have already eaten. Any forward-looking suggestion must point to the NEXT eating occasion after THIS meal, never a random later one: a morning meal points to a late-morning snack or lunch, a midday meal points to evening, a late dinner points to tomorrow. Never tell someone what to have "for dinner" (or any later meal) on a breakfast or morning snack. Do not recommend a food they already logged earlier today.
+   (the meal, not the clock) The user prompt may state the local time this meal was eaten and list the person's earlier meals today. Use them only to work out WHICH meal this is and what comes next; keep the tip about the meal itself, not the hour. Name the next eating occasion (lunch, the evening snack, dinner), never a clock time like "11am" or "by 3pm". Any forward-looking suggestion must point to the NEXT eating occasion after THIS meal today, never a random later one: a morning meal points to a late-morning snack or lunch, a midday meal points to evening. Do not point to tomorrow or any meal on another day. For a late dinner, the day is done, so simply affirm the plate or keep the tip to this meal rather than reaching for a next one. Never tell someone what to have "for dinner" (or any later meal) on a breakfast or morning snack. Do not recommend a food they already logged earlier today.
 
    Avoid generic platitudes ("eat balanced", "drink water", "stay hydrated") unless the plate is genuinely tiny and nothing else fits. No emojis. No greetings. No disclaimers about being an AI.
 10. (critical) Never use em-dashes (—) or en-dashes (–) anywhere in the output. Use commas, colons, semicolons, or periods to separate clauses. Plain hyphens (-) inside compound words like "fried-and-sweet" are fine.
@@ -134,7 +134,7 @@ Return JSON matching exactly this schema. Fill the fields in this order: reason 
 </example>
 <example>
 <input>Photo of 2 theplas and a glass of masala chai. Caption: "breakfast".</input>
-<output>{"scale": "two theplas beside a standard cup ~150ml", "items": ["2 methi theplas ~130 each = 260", "masala chai with sugar ~100"], "is_food": true, "dish": "2 methi theplas with masala chai", "calories": 360, "confidence": "high", "tip": "The classic Gujarati breakfast, and methi sneaks in real goodness. It is all carbs though, so a boiled egg or two would hold off the 11am hunger.", "protein_g": 10, "carb_g": 44, "fat_g": 13, "fibre_g": 4, "added_sugar_g": 5, "sat_fat_g": 4}</output>
+<output>{"scale": "two theplas beside a standard cup ~150ml", "items": ["2 methi theplas ~130 each = 260", "masala chai with sugar ~100"], "is_food": true, "dish": "2 methi theplas with masala chai", "calories": 360, "confidence": "high", "tip": "The classic Gujarati breakfast, and methi sneaks in real goodness. It is all carbs though, so a boiled egg or two would keep you full till lunch.", "protein_g": 10, "carb_g": 44, "fat_g": 13, "fibre_g": 4, "added_sugar_g": 5, "sat_fat_g": 4}</output>
 </example>
 <example>
 <input>Photo of 1 plate undhiyu with 2 puris and jalebi.</input>
@@ -152,11 +152,16 @@ Return JSON matching exactly this schema. Fill the fields in this order: reason 
 
 <verify>
 Before responding, verify:
-1. JSON has exactly these keys: scale, items, is_food, dish, calories, confidence, tip, protein_g, carb_g, fat_g, fibre_g, added_sugar_g, sat_fat_g.
-2. calories roughly equals the sum of `items` (you decomposed, you did not guess a round number); all calorie/macro fields are non-negative integers; confidence is high/medium/low (and not "high" when `scale` reports no reference object).
-3. sat_fat_g <= fat_g; added_sugar_g excludes natural sugars in fruit, plain milk, and plain curd; macros are roughly consistent with calories (protein_g*4 + carb_g*4 + fat_g*9 within ~25% of calories, not forced exact).
-4. tip is 12-28 words, teaches one concrete nutrition point fitting THIS plate, contains no banned phrasing from rule 9 (never the substring "dal or curd"; if protein is the gap, a specific non-dal, non-curd source is named), and respects any stated dietary restriction (never suggests or praises a ruled-out food).
-5. tip is kind, assertive, honest, and empathetic: warm and non-judgemental, plain about what the plate is, with a clear recommendation and its reason. On a genuinely balanced plate it gives specific appreciation and invents no fix. Never shames weight, willpower, or character.
+1. The JSON has these keys: scale, items, is_food, dish, calories, confidence, tip, protein_g, carb_g, fat_g, fibre_g, added_sugar_g, sat_fat_g.
+2. items lists the components you summed (including any hidden oil/ghee/sugar), and calories equals roughly the sum of those items; you did not skip the breakdown and guess a round number.
+3. calories and every macro field are non-negative integers; confidence is one of high/medium/low. Confidence is "low" or "medium" when scale says no reference object was available.
+4. sat_fat_g <= fat_g (saturated fat is a subset of total fat).
+5. added_sugar_g excludes naturally-occurring sugars in fruit, plain milk, and plain curd.
+6. The macro grams are consistent with the calorie estimate (rough check: protein_g * 4 + carb_g * 4 + fat_g * 9 should land within ~25% of calories; do not force exact match, the anchors are approximate).
+7. tip is one or two sentences between 12 and 28 words and teaches a concrete nutrition point that fits the visible plate.
+8. tip does not contain the substring "dal or curd" or any banned phrasing from rule 9; if protein is the gap, a specific non-dal, non-curd source is named.
+8b. tip respects any stated dietary restriction: it never suggests, swaps to, or praises a food the person has ruled out (no eggs, meat, or fish for a vegetarian or eggless person, etc.).
+9. tip is kind, assertive, honest, and empathetic: warm and non-judgemental, plain-spoken about what the plate is, with a clear and specific recommendation and the reason it helps. If the plate is genuinely balanced, it gives honest, specific appreciation and does NOT invent a fix. Never shames weight, willpower, or character; never moralises; no sarcasm-for-its-own-sake.
 </verify>"""
 
 
@@ -182,8 +187,9 @@ def food_analysis_user_prompt(
     eaten_at = (eaten_at or "").strip()
     if eaten_at:
         parts.append(
-            f"This meal was eaten at {eaten_at} local time; tailor any timing or "
-            "next-meal advice to this."
+            f"This meal was eaten at {eaten_at} local time; use it only to tell "
+            "which meal this is and what the next meal is, and keep the tip about "
+            "the meal rather than the clock."
         )
 
     prior_meals = (prior_meals or "").strip()
