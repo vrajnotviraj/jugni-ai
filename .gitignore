@@ -60,3 +60,7 @@ Thumbs.db
 
 # Deployment
 .vercel/
+
+# Eval food photos (drop your own real photos here; never committed)
+evals/photos/*
+!evals/photos/README.md
