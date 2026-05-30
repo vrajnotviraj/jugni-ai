@@ -2,8 +2,8 @@ name: Daily summary
 
 on:
   schedule:
-    # 17:00 UTC = 22:30 IST (10:30 PM)
-    - cron: "0 17 * * *"
+    # 16:00 UTC = 21:30 IST (9:30 PM)
+    - cron: "0 16 * * *"
   workflow_dispatch:
 
 jobs:
