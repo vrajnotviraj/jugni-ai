@@ -54,6 +54,18 @@ def resolve_target_chat_id(settings: Settings, chat_id: int | None) -> int:
     )
 
 
+def verify_cron_secret(settings: Settings, authorization: str | None) -> None:
+    if not settings.cron_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="CRON_SECRET is not configured on the server.",
+        )
+    expected = f"Bearer {settings.cron_secret}"
+    if authorization and hmac.compare_digest(authorization, expected):
+        return
+    raise HTTPException(status_code=401, detail="Invalid cron secret.")
+
+
 def verify_webhook_secret(
     settings: Settings,
     received_secret: str | None,

@@ -11,6 +11,7 @@ from domain.photo import StoredPhoto
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from workflows.personalization import dietary_facts
+from workflows.streak import user_streak
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,34 @@ async def build_day_report(
         )
     )
 
+    # Streak is display-only: computed per ranked user but never a ranking key.
+    # A single failing user_streak must not break the whole report, so we gather
+    # with return_exceptions and fall back to a zero-length streak on error.
+    streak_results = await asyncio.gather(
+        *(
+            user_streak(
+                repo=repo,
+                chat_id=chat_id,
+                sender_label=user.sender_label,
+                as_of_day_key=day_key,
+            )
+            for user in users
+        ),
+        return_exceptions=True,
+    )
+    streak_lengths = []
+    for user, state in zip(users, streak_results, strict=True):
+        if isinstance(state, BaseException):
+            logger.warning(
+                "streak failed chat=%s user=%s err=%s",
+                chat_id,
+                user.sender_label,
+                state,
+            )
+            streak_lengths.append(0)
+        else:
+            streak_lengths.append(state.length)
+
     return DayReport.assemble(
         chat_id,
         day_key,
@@ -58,6 +87,7 @@ async def build_day_report(
         total_photos=len(photos),
         calorie_targets=[target for _, target, _ in results],
         highlight_macros=[highlight for _, _, highlight in results],
+        streaks=streak_lengths,
     )
 
 

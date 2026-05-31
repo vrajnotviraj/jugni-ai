@@ -10,6 +10,7 @@ exactly those keys, so real data is never touched.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -27,12 +28,23 @@ from api.routes.profiles import SimulateCommandRequest, simulate_command
 from api.routes.summary import get_day_summary
 from api.routes.upload import upload_food_photo
 from core.settings import Settings
+from domain.analysis import FoodAnalysis
+from domain.photo import Photo
+from domain.streak import AtRiskUser
+from presenters.streak_nudge import STREAK_NUDGE_PARSE_MODE, format_streak_nudge
 from storage.redis_photo_repository import RedisPhotoRepository
 from storage.redis_profile_repository import RedisProfileRepository
 from workflows.dispatch_update import Dependencies
+from workflows.streak_nudge import build_streak_nudge
 
 EVAL_CHAT_ID = -9_990_000_001
 USER_ID_BASE = 990_000_001
+
+# A minimal stored meal used to seed prior-day activity without an OpenAI call.
+# The streak only reads day-presence, so the exact numbers don't matter.
+_SEED_ANALYSIS = FoodAnalysis(
+    dish="seeded meal", calories=1, confidence="high", tip="", is_food=True
+)
 
 
 class _Telegram:
@@ -84,7 +96,8 @@ class World:
                 break
         caption = stem.replace("_", " ").strip()
         upload = UploadFile(filename=image.name, file=BytesIO(image.read_bytes()))
-        return await upload_food_photo(
+        before = len(self.tg.sent)
+        result = await upload_food_photo(
             image=upload,
             user_label=label,
             chat_id=self.chat_id,
@@ -98,6 +111,42 @@ class World:
             image_estimator=self.image_estimator,
             admin_secret=self._secret,
         )
+        # The streak line lands in the sent reply, not the returned analysis.
+        result["reply_text"] = self.tg.sent[-1] if len(self.tg.sent) > before else ""
+        return result
+
+    async def seed_meal(self, *, label: str, user_id: int, when: datetime) -> None:
+        """Store a prior-day meal directly (no vision call) so a user reads as
+        having logged on ``when``'s local day — the basis for multi-day streaks."""
+        message_id = -(user_id * 100_000 + when.date().toordinal())
+        photo = Photo(
+            update_id=0,
+            chat_id=self.chat_id,
+            message_id=message_id,
+            sender_id=user_id,
+            sender_label=label,
+            sent_at=when,
+            file_id=f"seed:{message_id}",
+            file_unique_id=None,
+            caption=None,
+        )
+        if await self.photo_repo.reserve(photo):
+            await self.photo_repo.complete(photo, _SEED_ANALYSIS)
+
+    async def nudge(self) -> tuple[list[AtRiskUser], str]:
+        """Run the evening at-risk check and send the one consolidated message
+        (when anyone is at risk), returning the at-risk list and the sent text."""
+        before = len(self.tg.sent)
+        at_risk = await build_streak_nudge(
+            repo=self.photo_repo, chat_id=self.chat_id, timezone=self.settings.timezone
+        )
+        if at_risk:
+            await self.tg.send_message(
+                self.chat_id,
+                format_streak_nudge(at_risk),
+                parse_mode=STREAK_NUDGE_PARSE_MODE,
+            )
+        return at_risk, "\n".join(self.tg.sent[before:])
 
     async def command(self, *, user_id: int, text: str) -> dict:
         """POST /api/profiles/simulate — runs a real DM command (/profile, /context)."""

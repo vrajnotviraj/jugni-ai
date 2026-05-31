@@ -1,7 +1,9 @@
 import logging
+import random
 from html import escape
 
 from domain.analysis import FoodAnalysis
+from domain.streak import StreakState
 from presenters.macros import macro_shares
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ def format_photo_reply(
     sender_label: str,
     analysis: FoodAnalysis,
     daily_total: int,
+    streak_line: str | None = None,
 ) -> str:
     if not analysis.is_food:
         return NOT_FOOD_REPLY
@@ -35,12 +38,59 @@ def format_photo_reply(
         macro_line = None
     if macro_line:
         parts.append(macro_line)
-    parts.extend([today_line, confidence_line])
+    parts.append(today_line)
+    if streak_line:
+        parts.append(streak_line)
+    parts.append(confidence_line)
 
     tip = (analysis.tip or "").strip()
     if tip:
         parts.append(f"<blockquote>{escape(tip, quote=False)}</blockquote>")
     return "\n".join(parts)
+
+
+# Milestone copy at 3/7/14/30 (KTD7); other lengths get a quiet count.
+_MILESTONE_LINES = {
+    3: "🔥 3 days running — habit forming!",
+    7: "🎉 Week warrior — 7-day streak!",
+    14: "💪 Two weeks straight — 14 days!",
+    30: "🏆 30-day streak — legend.",
+}
+
+# Rotating copy for the everyday streak line (length >= 2, no milestone) so it
+# never reads the same two days running. Every variant names the day count and
+# nudges the user to keep going. {n} is the streak length.
+_STREAK_LINES = (
+    "🔥 {n}-day streak — don't break the chain!",
+    "🔥 {n} days in a row — keep it rolling!",
+    "🔥 {n}-day streak going strong — log tomorrow too!",
+    "🔥 {n} days straight — you're on a roll!",
+    "🔥 {n}-day streak! Momentum is yours — keep it up.",
+    "🔥 {n} days and counting — don't stop now!",
+    "🔥 {n}-day streak — consistency looks good on you!",
+    "🔥 {n} days logged in a row — keep the fire alive!",
+    "🔥 {n}-day streak — one more day, one more win!",
+    "🔥 {n} days deep — the chain is unbroken!",
+    "🔥 {n}-day streak — showing up beats perfect. Nice work!",
+    "🔥 {n} days running — future you says thanks!",
+    "🔥 {n}-day streak — stack another one tomorrow!",
+    "🔥 {n} days strong — the habit is forming!",
+    "🔥 {n}-day streak — keep showing up!",
+    "🔥 {n} days in a row — small wins add up!",
+    "🔥 {n}-day streak — don't let it slip tonight!",
+    "🔥 {n} days and going — you've got this!",
+)
+
+
+def format_streak_line(state: StreakState) -> str | None:
+    """The one-line streak reinforcement, or None when there's nothing to show."""
+    if not state.alive or state.length <= 0:
+        return None
+    if state.milestone in _MILESTONE_LINES:
+        return _MILESTONE_LINES[state.milestone]
+    if state.length == 1:
+        return "🔥 Day 1 — you're on the board!"
+    return random.choice(_STREAK_LINES).format(n=state.length)
 
 
 def _confidence_line(confidence: str) -> str:
@@ -59,7 +109,7 @@ def _macro_line(analysis: FoodAnalysis) -> str | None:
 _CALORIE_TIERS = (
     (200, "🌱"),
     (450, "🍴"),
-    (750, "🔥"),
+    (750, "⚡"),
     (1100, "💥"),
 )
 _CALORIE_HEAVY_ICON = "🚨"

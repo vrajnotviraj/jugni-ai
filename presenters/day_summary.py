@@ -56,9 +56,11 @@ def _format_user_block(user: UserDaySummary) -> str:
     header = (
         f"{_rank_icon(user.rank)} <b>{escape(user.sender_label, quote=False)}</b>"
         f"  ·  🍽️ {user.meal_periods_covered}/3"
-        f"  ·  🔥 {user.calories} kcal"
+        f"  ·  ⚡ {user.calories} kcal"
         f"  ·  {_score_emoji(user.health_score)} {user.health_score}/10"
     )
+    if user.streak > 0:
+        header = f"{header}  ·  🔥 {user.streak}d"
 
     try:
         macro_line = _macro_line(user)

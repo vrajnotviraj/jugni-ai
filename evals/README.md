@@ -27,6 +27,15 @@ the **filename becomes the caption** (e.g. `m_palak paneer with rice.jpg`).
 | `context` | one user adds a `whole milk` context note, then posts photos |
 | `delete`  | post photos, then delete one via the meals route — the total recomputes |
 | `day`     | a few people post (one on a profile), then build and grade the daily summary |
+| `streak_reply` | seed 4 prior days, post today — the reply shows a 5-day streak; a second post does not repeat it |
+| `streak_milestone` | seed 6 prior days, post today — the reply celebrates the 7-day milestone |
+| `streak_grace` | seed days around a single gap — the streak survives (never-miss-twice) |
+| `streak_summary` | two people with seeded histories post — the summary shows each streak |
+| `streak_nudge` | seed an at-risk user (logged yesterday, not today) — the evening nudge names them, then goes silent once they log |
+
+The `streak_*` cases seed prior-day activity directly (no vision call), since the
+upload route always stamps posts with today. `day.seed(user, days_ago=[...])`
+writes those days; the surfaces then read the streak through the real handlers.
 
 ## How it's built (three small files)
 

@@ -6,11 +6,16 @@ from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.calorie_target import goal_summary
 from domain.photo import Photo, StoredPhoto
-from presenters.photo_reply import PHOTO_REPLY_PARSE_MODE, format_photo_reply
+from presenters.photo_reply import (
+    PHOTO_REPLY_PARSE_MODE,
+    format_photo_reply,
+    format_streak_line,
+)
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from workflows.personalization import dietary_facts
+from workflows.streak import user_streak
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +104,36 @@ async def handle_photo(
 
     await repo.complete(photo, analysis)
     daily_total = await repo.daily_user_total(photo)
-    reply = format_photo_reply(photo.sender_label, analysis, daily_total)
+    # Reinforce the streak only on the first meal of the local day (KTD4); `prior`
+    # was read before this photo was stored, so empty means this is the first.
+    streak_line = await _streak_line(repo, photo, day_key) if not prior else None
+    reply = format_photo_reply(
+        photo.sender_label, analysis, daily_total, streak_line=streak_line
+    )
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis
+
+
+async def _streak_line(
+    repo: PhotoRepository,
+    photo: Photo,
+    day_key: str,
+) -> str | None:
+    # Defensive, mirroring the macro line: a streak failure must never block the
+    # calorie reply.
+    try:
+        state = await user_streak(
+            repo=repo,
+            chat_id=photo.chat_id,
+            sender_label=photo.sender_label,
+            as_of_day_key=day_key,
+        )
+        return format_streak_line(state)
+    except Exception:
+        logger.exception(
+            "streak line failed msg=%s; replying without it", photo.message_id
+        )
+        return None
 
 
 async def _load_profile(
