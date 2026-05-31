@@ -11,6 +11,7 @@ from domain.photo import StoredPhoto
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from workflows.personalization import dietary_facts
+from workflows.streak import user_streak
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,19 @@ async def build_day_report(
         )
     )
 
+    # Streak is display-only: computed per ranked user but never a ranking key.
+    streaks = await asyncio.gather(
+        *(
+            user_streak(
+                repo=repo,
+                chat_id=chat_id,
+                sender_label=user.sender_label,
+                as_of_day_key=day_key,
+            )
+            for user in users
+        )
+    )
+
     return DayReport.assemble(
         chat_id,
         day_key,
@@ -58,6 +72,7 @@ async def build_day_report(
         total_photos=len(photos),
         calorie_targets=[target for _, target, _ in results],
         highlight_macros=[highlight for _, _, highlight in results],
+        streaks=[state.length for state in streaks],
     )
 
 

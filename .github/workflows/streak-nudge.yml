@@ -1,0 +1,21 @@
+name: Streak nudge
+
+on:
+  schedule:
+    # 13:30 UTC = 19:00 IST (7:00 PM), ahead of the 21:30 daily summary.
+    - cron: "30 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit the streak-nudge endpoint
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail --show-error --silent \
+            --max-time 300 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${CRON_URL%/daily-summary}/streak-nudge"

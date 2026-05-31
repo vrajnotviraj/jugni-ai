@@ -1,10 +1,16 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 
 def today_day_key(timezone: ZoneInfo, now: datetime | None = None) -> str:
     current = now or datetime.now(timezone)
     return current.astimezone(timezone).date().isoformat()
+
+
+def recent_day_keys(as_of: str, count: int) -> list[str]:
+    """The ``count`` ISO day-keys ending at ``as_of``, most recent first."""
+    start = date.fromisoformat(as_of)
+    return [(start - timedelta(days=offset)).isoformat() for offset in range(count)]
 
 
 def day_key_for_day_iso(day_iso: str) -> str:

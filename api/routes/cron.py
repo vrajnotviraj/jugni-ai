@@ -1,4 +1,3 @@
-import hmac
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -10,6 +9,7 @@ from api.dependencies import (
     get_repo,
     get_settings,
     get_telegram,
+    verify_cron_secret,
 )
 from core.settings import Settings
 from storage.photo_repository import PhotoRepository
@@ -23,18 +23,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _verify_cron_secret(settings: Settings, authorization: str | None) -> None:
-    if not settings.cron_secret:
-        raise HTTPException(
-            status_code=500,
-            detail="CRON_SECRET is not configured on the server.",
-        )
-    expected = f"Bearer {settings.cron_secret}"
-    if authorization and hmac.compare_digest(authorization, expected):
-        return
-    raise HTTPException(status_code=401, detail="Invalid cron secret.")
-
-
 @router.get("/api/cron/daily-summary")
 async def daily_summary_cron(
     settings: Settings = Depends(get_settings),
@@ -44,7 +32,7 @@ async def daily_summary_cron(
     telegram: TelegramBotApi = Depends(get_telegram),
     authorization: str | None = Header(default=None),
 ) -> dict[str, object]:
-    _verify_cron_secret(settings, authorization)
+    verify_cron_secret(settings, authorization)
 
     if not settings.telegram_group_chat_ids:
         raise HTTPException(

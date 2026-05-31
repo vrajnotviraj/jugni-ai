@@ -47,6 +47,7 @@ For every food photo:
 - confidence level
 - sender's total calories for the day
 - 1 practical diet tip
+- a streak line on the first meal of the day ("🔥 5-day streak")
 
 For the daily summary:
 
@@ -55,6 +56,7 @@ For the daily summary:
 - meal timeline
 - health score out of 10
 - short nutrition note per person
+- each person's current logging streak (🔥)
 
 Calories are photo estimates. Good enough for accountability, weak evidence for anything clinical.
 
@@ -62,7 +64,7 @@ Calories are photo estimates. Good enough for accountability, weak evidence for 
 
 I want the bot to get more personal without making the chat annoying.
 
-Streaks are first. If you post meals 5 days in a row, the bot should know. If you disappear for 2 days, the group should see that too.
+Streaks shipped first (see [Streaks](#streaks)): the bot now knows when you post several days in a row, and the group sees it too.
 
 Weekly analysis comes after that. The bot can spot patterns a single day misses: low protein breakfasts, late dinners, too many liquid calories, or the famous "healthy Monday, chaos by Thursday" graph.
 
@@ -206,6 +208,32 @@ curl -H "X-Admin-API-Secret: another-long-secret" \
 ```
 
 The summary ranks the team for that local day.
+
+## Streaks
+
+A streak is how many days in a row you logged at least one meal. It needs no
+setup and no new storage — it's derived on read from the meals already stored,
+so it just works.
+
+It shows up on three surfaces:
+
+- **First meal of the day** — your photo reply gains a streak line ("🔥 5-day
+  streak"), with richer copy at the 3, 7, 14, and 30-day milestones. Only the
+  first meal each day shows it, so replies never turn into streak spam.
+- **Daily summary** — each ranked person carries their current streak (🔥). It's
+  display-only; it never changes the ranking.
+- **Evening nudge** — at 19:00 IST the bot posts one consolidated group message
+  naming anyone with a live streak (3+ days) who hasn't logged yet today, so they
+  can save it before the day ends. If nobody is at risk, it stays silent.
+
+Missing a single day is forgiven (never-miss-twice): a streak only breaks on two
+missed days in a row. Day bucketing uses the app timezone, like the group
+leaderboard, so everyone shares one clock for what "today" means.
+
+Both scheduled posts are GitHub Actions hitting cron endpoints with a
+`Bearer $CRON_SECRET` header: `/api/cron/daily-summary` (21:30 IST) and
+`/api/cron/streak-nudge` (19:00 IST). The nudge workflow reuses `CRON_URL` by
+swapping the trailing path, so no new secret is needed.
 
 ## Finding the group chat id
 

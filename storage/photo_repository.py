@@ -39,6 +39,19 @@ class PhotoRepository(Protocol):
     ) -> list[StoredPhoto]:
         """Return one user's estimated meals for a local day, oldest first."""
 
+    async def user_active_days(
+        self,
+        *,
+        chat_id: int,
+        sender_label: str,
+        day_keys: list[str],
+    ) -> set[str]:
+        """Return which of the given local days this user logged on.
+
+        A cheap set-existence check (no photo hydration) — the basis for deriving
+        streaks across many days for many users.
+        """
+
     async def daily_user_total(self, photo: Photo) -> int:
         """Return the running calorie total for this photo's sender today."""
 

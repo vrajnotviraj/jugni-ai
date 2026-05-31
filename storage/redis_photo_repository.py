@@ -95,6 +95,25 @@ class RedisPhotoRepository:
         photos.sort(key=lambda sp: sp.sent_at or datetime.min.replace(tzinfo=UTC))
         return photos
 
+    async def user_active_days(
+        self,
+        *,
+        chat_id: int,
+        sender_label: str,
+        day_keys: list[str],
+    ) -> set[str]:
+        if not day_keys:
+            return set()
+        pipe = self._redis.pipeline(transaction=False)
+        for day_key in day_keys:
+            pipe.exists(_user_day_key(chat_id, day_key, sender_label))
+        results = await pipe.execute()
+        return {
+            day_key
+            for day_key, present in zip(day_keys, results, strict=True)
+            if present
+        }
+
     async def daily_user_total(self, photo: Photo) -> int:
         return await self.daily_user_calories(
             chat_id=photo.chat_id,

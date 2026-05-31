@@ -9,6 +9,8 @@ them later. To add a case: write `async def case_x(day)` and list it in `CASES`.
 
 import random
 import re
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 
 from evals.harness import World
@@ -20,6 +22,15 @@ PHOTOS = Path(__file__).parent / "photos"
 TIP = "The tip is kind (not preachy) and gives a concrete suggestion that fits this specific dish, not a generic platitude."
 VEG = "The tip never recommends eggs, meat, or fish as a food to eat or add (the person is vegetarian and eggless); suggesting they skip or replace such foods is fine."
 SUMMARY = "The text describes one person's day with at least one strength and one gap, in plain words, and quotes no raw calorie or gram numbers."
+
+# Streak rules. The reply rules embed the exact day-count the seeded history
+# must produce, so the judge verifies the streak maths, not just the wording.
+STREAK_5 = "The text tells the user they are on a 5-day streak (it states the number 5 as the streak/day count) and encourages them to keep it going."
+STREAK_MILESTONE = "The text celebrates a 7-day streak as a milestone with congratulatory wording (e.g. a 'week' achievement), not just a plain count."
+STREAK_GRACE = "The text tells the user they are on a 4-day streak (it states the number 4 as the day count) and encourages them to keep going."
+NO_STREAK = "The text is a normal meal reply and does NOT mention any streak, consecutive-day count, or 'don't break the chain' language."
+SUMMARY_STREAK = "The leaderboard text shows a consecutive-day streak count (a number of days running) for at least one person, alongside their meal stats."
+NUDGE_KIND = "The message asks people to log a meal before the day ends to keep their streak alive, in an encouraging, non-shaming tone (no blame or 'you failed' wording)."
 
 # Photos are tagged by filename: s_ = snack, m_ = meal. Times come from these windows.
 SNACK_WINDOWS = [(7, 10), (15, 17)]  # 7-11 AM, 3-6 PM
@@ -50,6 +61,20 @@ class Day:
     def meal(self) -> Path:
         return self._rng.choice(photos("m_"))
 
+    async def seed(self, user: str, days_ago: list[int]) -> None:
+        """Give a user prior logged days, so today's post sits on a real streak.
+
+        Each entry is a number of days before today; activity is written
+        directly (no vision call), the way multi-day history is simulated."""
+        tz = self._world.settings.timezone
+        today = datetime.now(tz).date()
+        for offset in days_ago:
+            when = datetime.combine(today - timedelta(days=offset), dtime(12, 0), tz)
+            await self._world.seed_meal(
+                label=user, user_id=self._id(user), when=when
+            )
+        self._say(f"{user} has prior activity {sorted(days_ago)} day(s) ago")
+
     async def profile(self, user: str, text: str) -> None:
         reply = await self._world.command(
             user_id=self._id(user), text=f"/profile {text}"
@@ -65,7 +90,13 @@ class Day:
         self._say("↳ " + _reply(reply))
 
     async def post(
-        self, user: str, photo: Path, *, judge: str | None = None, show: bool = True
+        self,
+        user: str,
+        photo: Path,
+        *,
+        judge: str | None = None,
+        judge_reply: str | None = None,
+        show: bool = True,
     ) -> None:
         when = self._time(photo)
         try:
@@ -85,6 +116,9 @@ class Day:
             print(f"        tip: {analysis['tip']}")
         if judge:
             self.to_judge.append((f"tip · {analysis['dish']}", analysis["tip"], judge))
+        if judge_reply:
+            reply = _plain(result.get("reply_text", ""))
+            self.to_judge.append((f"reply · {analysis['dish']}", reply, judge_reply))
 
     async def delete_one(self, user: str) -> None:
         block = _block(await self._world.meals(), user)
@@ -97,15 +131,27 @@ class Day:
         result = await self._world.delete(block["meals"][0]["message_id"])
         self._say(f"deleted one meal; new total {result['new_total_calories']} kcal")
 
-    async def summary(self) -> None:
+    async def summary(self, *, judge: str | None = None) -> None:
         self._say("everyone has posted; building the daily summary")
         data, text = await self._world.summary()
         print("\n" + _plain(text))
+        if judge:
+            self.to_judge.append(("summary", _plain(text), judge))
+            return
         for user in data["users"][:2]:
             if user["summary"]:
                 self.to_judge.append(
                     (f"summary · {user['sender_label']}", user["summary"], SUMMARY)
                 )
+
+    async def nudge(self, *, judge: str | None = None) -> None:
+        self._say("evening: checking who is at risk of breaking their streak")
+        at_risk, text = await self._world.nudge()
+        self._say(f"at risk: {[user.sender_label for user in at_risk]}")
+        if text:
+            print("\n" + _plain(text))
+        if judge and text:
+            self.to_judge.append(("nudge", _plain(text), judge))
 
     def _say(self, text: str) -> None:
         self._step_no += 1
@@ -169,9 +215,51 @@ async def case_day(day: Day) -> None:
     await day.summary()
 
 
+async def case_streak_reply(day: Day) -> None:
+    """A user with 4 prior days logs today: the reply shows a 5-day streak, and a second meal the same day does not repeat it."""
+    await day.seed("@aarav", days_ago=[1, 2, 3, 4])
+    await day.post("@aarav", day.meal(), judge_reply=STREAK_5)
+    await day.post("@aarav", day.meal(), judge_reply=NO_STREAK)
+
+
+async def case_streak_milestone(day: Day) -> None:
+    """A user with 6 prior days logs today; the reply celebrates the 7-day milestone."""
+    await day.seed("@diya", days_ago=[1, 2, 3, 4, 5, 6])
+    await day.post("@diya", day.meal(), judge_reply=STREAK_MILESTONE)
+
+
+async def case_streak_grace(day: Day) -> None:
+    """A user missed one day but logged around it; today's reply keeps a 4-day streak alive (never-miss-twice)."""
+    # Active 1, 3, 4 days ago (single gap at day 2) plus today => length 4.
+    await day.seed("@kabir", days_ago=[1, 3, 4])
+    await day.post("@kabir", day.meal(), judge_reply=STREAK_GRACE)
+
+
+async def case_streak_summary(day: Day) -> None:
+    """Two people with running streaks post today; the daily summary shows each one's streak."""
+    await day.seed("@aarav", days_ago=[1, 2, 3])
+    await day.seed("@diya", days_ago=[1, 2, 3, 4, 5])
+    await day.post("@aarav", day.meal(), show=False)
+    await day.post("@diya", day.meal(), show=False)
+    await day.summary(judge=SUMMARY_STREAK)
+
+
+async def case_streak_nudge(day: Day) -> None:
+    """A user with a live streak logged yesterday but not today; the evening nudge names them, then goes silent once they log."""
+    await day.seed("@meera", days_ago=[1, 2, 3])
+    await day.nudge(judge=NUDGE_KIND)
+    await day.post("@meera", day.meal(), show=False)  # now logged today
+    await day.nudge()  # nobody at risk -> no message sent
+
+
 CASES = {
     "profile": case_profile,
     "context": case_context,
     "delete": case_delete,
     "day": case_day,
+    "streak_reply": case_streak_reply,
+    "streak_milestone": case_streak_milestone,
+    "streak_grace": case_streak_grace,
+    "streak_summary": case_streak_summary,
+    "streak_nudge": case_streak_nudge,
 }

@@ -121,6 +121,8 @@ class UserDaySummary:
     # Label of the macro to emphasise for this person's goal (see
     # domain.calorie_target.highlight_macro), or None when none stands out.
     highlight_macro: str | None = None
+    # Current logging-streak length (display-only; never a ranking key in v1).
+    streak: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,14 +142,16 @@ class DayReport:
         total_photos: int,
         calorie_targets: list[int | None] | None = None,
         highlight_macros: list[str | None] | None = None,
+        streaks: list[int] | None = None,
     ) -> "DayReport":
         # Build per-user summaries, carrying meal-period coverage alongside each
         # for a hard two-tier ranking.
         targets = calorie_targets or [None] * len(users)
         highlights = highlight_macros or [None] * len(users)
+        streak_lengths = streaks or [0] * len(users)
         summaries: list[UserDaySummary] = []
-        for user, note, target, highlight in zip(
-            users, notes, targets, highlights, strict=True
+        for user, note, target, highlight, streak in zip(
+            users, notes, targets, highlights, streak_lengths, strict=True
         ):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
@@ -172,6 +176,7 @@ class DayReport:
                     calorie_target=target,
                     macros=user.macros,
                     highlight_macro=highlight,
+                    streak=streak,
                 )
             )
 
@@ -203,6 +208,7 @@ class DayReport:
                 calorie_target=u.calorie_target,
                 macros=u.macros,
                 highlight_macro=u.highlight_macro,
+                streak=u.streak,
             )
             for index, u in enumerate(summaries, start=1)
         )
