@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Meal-period windows by local hour: breakfast < 11:00, lunch 11:00-16:59,
 # dinner >= 17:00. Used to measure how complete a logged day is.
@@ -117,6 +117,10 @@ class UserDaySummary:
     rank: int
     meal_periods_covered: int = 0
     calorie_target: int | None = None
+    macros: DayMacros = field(default_factory=DayMacros)
+    # Label of the macro to emphasise for this person's goal (see
+    # domain.calorie_target.highlight_macro), or None when none stands out.
+    highlight_macro: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,12 +139,16 @@ class DayReport:
         notes: list[DayNote],
         total_photos: int,
         calorie_targets: list[int | None] | None = None,
+        highlight_macros: list[str | None] | None = None,
     ) -> "DayReport":
         # Build per-user summaries, carrying meal-period coverage alongside each
         # for a hard two-tier ranking.
         targets = calorie_targets or [None] * len(users)
+        highlights = highlight_macros or [None] * len(users)
         summaries: list[UserDaySummary] = []
-        for user, note, target in zip(users, notes, targets, strict=True):
+        for user, note, target, highlight in zip(
+            users, notes, targets, highlights, strict=True
+        ):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
                 MealTimeline(
@@ -162,6 +170,8 @@ class DayReport:
                     rank=0,
                     meal_periods_covered=meal_periods_covered(user.meals),
                     calorie_target=target,
+                    macros=user.macros,
+                    highlight_macro=highlight,
                 )
             )
 
@@ -191,6 +201,8 @@ class DayReport:
                 rank=index,
                 meal_periods_covered=u.meal_periods_covered,
                 calorie_target=u.calorie_target,
+                macros=u.macros,
+                highlight_macro=u.highlight_macro,
             )
             for index, u in enumerate(summaries, start=1)
         )

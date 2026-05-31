@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from analyzers.summary.factory import DaySummarizer
 from core.dates import day_key_for_day_iso, summary_time_context, today_day_key
 from domain.breakdown import daily_user_breakdown
-from domain.calorie_target import calorie_target, goal_summary
+from domain.calorie_target import calorie_target, goal_summary, highlight_macro
 from domain.day import DayNote, DayReport, UserDay
 from domain.photo import StoredPhoto
 from storage.photo_repository import PhotoRepository
@@ -54,9 +54,10 @@ async def build_day_report(
         chat_id,
         day_key,
         users,
-        [note for note, _ in results],
+        [note for note, _, _ in results],
         total_photos=len(photos),
-        calorie_targets=[target for _, target in results],
+        calorie_targets=[target for _, target, _ in results],
+        highlight_macros=[highlight for _, _, highlight in results],
     )
 
 
@@ -68,7 +69,7 @@ async def _note_for_user(
     day_summarizer: DaySummarizer,
     day_key: str,
     timezone: ZoneInfo,
-) -> tuple[DayNote, int | None]:
+) -> tuple[DayNote, int | None, str | None]:
     # Resolve the profile once: it gives the user's clock (R14), a goal-with-target
     # phrase for the note, and a calorie target for ranking. Falls back to app tz /
     # no goal / no target when the user has no profile, weight, or resolvable id.
@@ -77,6 +78,8 @@ async def _note_for_user(
     # Compute the target once and reuse it for both the goal phrase and ranking.
     target = calorie_target(profile)
     goal = goal_summary(profile, target)
+    # The macro to emphasise in the summary's macro line, from the raw goal text.
+    macro_highlight = highlight_macro(profile.goal if profile else None)
     dietary = await dietary_facts(profile, profile_repo, sender_id)
     time_context = summary_time_context(day_key, zone)
     logger.info(
@@ -93,7 +96,7 @@ async def _note_for_user(
     note = await day_summarizer(
         list(user.meals), as_of=time_context, goal=goal, dietary=dietary
     )
-    return note, target
+    return note, target, macro_highlight
 
 
 async def _load_profile(

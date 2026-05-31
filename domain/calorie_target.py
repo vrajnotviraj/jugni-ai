@@ -84,6 +84,21 @@ def goal_summary(profile: UserProfile | None, target: object = _UNSET) -> str | 
     return f"{goal} (realistic daily calorie target about {target} kcal)"
 
 
+def highlight_macro(goal: str | None) -> str | None:
+    """The macro worth emphasising for this goal, or None when none stands out.
+
+    Protein anchors both directions: a gain/muscle goal needs enough of it to
+    build, and a loss goal needs it to hold lean mass and stay full. Maintenance
+    or no stated goal gets no single highlight, since balance is the point.
+    The returned label matches the ``macro_shares`` labels so callers can mark
+    the matching slice. See domain research: protein is the priority macro for
+    both gain and fat-loss goals.
+    """
+    if _goal_direction(goal) in ("gain", "loss"):
+        return "Protein"
+    return None
+
+
 def _goal_direction(goal: str | None) -> str:
     text = (goal or "").casefold()
     # Loss is checked first: "lose fat" wins over an incidental "gain" keyword.

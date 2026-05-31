@@ -1,6 +1,10 @@
+import logging
 from html import escape
 
-from domain.day import DayReport, MealTimeline, UserDaySummary
+from domain.day import DayMacros, DayReport, MealTimeline, UserDaySummary
+from presenters.macros import macro_shares
+
+logger = logging.getLogger(__name__)
 
 NO_FOOD_PHOTOS_REPLY = "No food photos found for today."
 
@@ -56,6 +60,12 @@ def _format_user_block(user: UserDaySummary) -> str:
         f"  ·  {_score_emoji(user.health_score)} {user.health_score}/10"
     )
 
+    try:
+        macro_line = _macro_line(user)
+    except Exception:
+        logger.exception("macro line rendering failed; omitting it from the summary")
+        macro_line = None
+
     meal_lines = [_format_meal_line(meal) for meal in user.meals_timeline]
 
     summary = (user.summary or "").strip()
@@ -64,11 +74,54 @@ def _format_user_block(user: UserDaySummary) -> str:
     )
 
     parts = [header]
+    if macro_line:
+        parts.append(macro_line)
     if meal_lines:
         parts.append("\n".join(meal_lines))
     if summary_block:
         parts.append(summary_block)
     return "\n".join(parts)
+
+
+def _macro_line(user: UserDaySummary) -> str | None:
+    """The day's protein/carb/fat balance as a share of calories, mirroring the
+    photo reply. The macro that matters for this person's goal is bolded, and a
+    single sugar/fibre flag is appended when the day is notably off on either.
+    """
+    ranked = macro_shares(
+        user.macros.protein_g, user.macros.carb_g, user.macros.fat_g
+    )
+    if not ranked:
+        return None
+    pieces = []
+    for label, icon, pct in ranked:
+        text = f"{icon} {label} {pct}%"
+        if label == user.highlight_macro:
+            text = f"{icon} <b>{label} {pct}%</b>"
+        pieces.append(text)
+    line = " · ".join(pieces)
+    flag = _macro_flag(user.macros, user.calories)
+    if flag:
+        line = f"{line}  ·  {flag}"
+    return line
+
+
+# A day clears these and the sugar/fibre flag fires. Added sugar at or above the
+# FDA Daily Value (50 g) reads as high; fibre is flagged thin only once the day
+# is substantial enough (>= 1200 kcal) that a real shortfall is meaningful, well
+# under the ~25-30 g/day recommendation.
+_HIGH_SUGAR_G = 50
+_LOW_FIBRE_G = 15
+_FIBRE_FLAG_MIN_KCAL = 1200
+
+
+def _macro_flag(macros: DayMacros, calories: int) -> str | None:
+    """At most one flag, worst-first: high added sugar, then thin fibre."""
+    if macros.added_sugar_g >= _HIGH_SUGAR_G:
+        return "🍬 high sugar"
+    if calories >= _FIBRE_FLAG_MIN_KCAL and macros.fibre_g < _LOW_FIBRE_G:
+        return "🌾 low fibre"
+    return None
 
 
 def _format_meal_line(meal: MealTimeline) -> str:
