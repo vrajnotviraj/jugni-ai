@@ -52,7 +52,9 @@ async def build_day_report(
     )
 
     # Streak is display-only: computed per ranked user but never a ranking key.
-    streaks = await asyncio.gather(
+    # A single failing user_streak must not break the whole report, so we gather
+    # with return_exceptions and fall back to a zero-length streak on error.
+    streak_results = await asyncio.gather(
         *(
             user_streak(
                 repo=repo,
@@ -61,8 +63,21 @@ async def build_day_report(
                 as_of_day_key=day_key,
             )
             for user in users
-        )
+        ),
+        return_exceptions=True,
     )
+    streak_lengths = []
+    for user, state in zip(users, streak_results, strict=True):
+        if isinstance(state, BaseException):
+            logger.warning(
+                "streak failed chat=%s user=%s err=%s",
+                chat_id,
+                user.sender_label,
+                state,
+            )
+            streak_lengths.append(0)
+        else:
+            streak_lengths.append(state.length)
 
     return DayReport.assemble(
         chat_id,
@@ -72,7 +87,7 @@ async def build_day_report(
         total_photos=len(photos),
         calorie_targets=[target for _, target, _ in results],
         highlight_macros=[highlight for _, _, highlight in results],
-        streaks=[state.length for state in streaks],
+        streaks=streak_lengths,
     )
 
 

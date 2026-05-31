@@ -35,17 +35,26 @@ async def streak_nudge_cron(
 
     nudged: list[int] = []
     for chat_id in settings.telegram_group_chat_ids:
-        at_risk = await build_streak_nudge(
-            repo=repo, chat_id=chat_id, timezone=settings.timezone
-        )
-        if not at_risk:
+        # One chat's failure (compute or send) must not abort the whole cron or
+        # leave already-nudged chats to be re-sent on retry, so each chat is
+        # isolated and a failed send is simply not recorded as nudged.
+        try:
+            at_risk = await build_streak_nudge(
+                repo=repo, chat_id=chat_id, timezone=settings.timezone
+            )
+            if not at_risk:
+                continue
+            await telegram.send_message(
+                chat_id,
+                format_streak_nudge(at_risk),
+                parse_mode=STREAK_NUDGE_PARSE_MODE,
+            )
+            logger.info(
+                "cron streak-nudge sent chat=%s at_risk=%s", chat_id, len(at_risk)
+            )
+            nudged.append(chat_id)
+        except Exception:
+            logger.exception("cron streak-nudge failed chat=%s", chat_id)
             continue
-        await telegram.send_message(
-            chat_id,
-            format_streak_nudge(at_risk),
-            parse_mode=STREAK_NUDGE_PARSE_MODE,
-        )
-        logger.info("cron streak-nudge sent chat=%s at_risk=%s", chat_id, len(at_risk))
-        nudged.append(chat_id)
 
     return {"ok": True, "chat_ids": nudged}
