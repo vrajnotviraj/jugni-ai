@@ -28,9 +28,9 @@ def build_context_rewriter(
     openai_client = client or AsyncOpenAI(api_key=settings.openai_api_key)
     model = settings.openai_model
 
-    async def rewriter(*, existing: list[str], new_note: str) -> list[str]:
+    async def rewriter(*, existing: list[str], message: str) -> list[str]:
         return await rewrite_context(
-            openai_client, model=model, existing=existing, new_note=new_note
+            openai_client, model=model, existing=existing, message=message
         )
 
     return rewriter
@@ -41,45 +41,38 @@ async def rewrite_context(
     *,
     model: str,
     existing: list[str],
-    new_note: str,
+    message: str,
 ) -> list[str]:
-    """Merge new_note into existing notes and return a concise, deduped set.
+    """Apply the person's free-text message (add/change/remove) and return the set.
 
-    Never raises: on any failure it falls back to appending the new note to the
-    existing notes (deduped), so the user's note is never silently lost.
+    Never raises. Because the message's intent is only known to the model, a hard
+    failure (API error or malformed output) can't be safely re-applied by hand, so
+    we leave the existing notes untouched rather than guess and corrupt the set.
+    An empty list from the model is a real outcome (the person cleared their notes).
     """
     try:
         raw = await call_responses(
             client,
             model=model,
             system=CONTEXT_REWRITE_SYSTEM_PROMPT,
-            user=context_rewrite_user_prompt(existing=existing, new_note=new_note),
+            user=context_rewrite_user_prompt(existing=existing, message=message),
             cache_key="context-rewrite",
         )
         payload = parse_fenced_json(raw)
     except Exception:
-        logger.exception("context rewrite failed; falling back to append")
-        return _fallback_append(existing, new_note)
+        logger.exception("context rewrite failed; leaving notes unchanged")
+        return _clean(existing)
 
     notes = payload.get("notes")
     if not isinstance(notes, list):
-        logger.info("context rewrite: model returned no notes list, falling back")
-        return _fallback_append(existing, new_note)
+        logger.info("context rewrite: no notes list, leaving notes unchanged")
+        return _clean(existing)
 
     cleaned = _clean(str(note) for note in notes)
-    if not cleaned:
-        logger.info("context rewrite: empty after cleaning, falling back")
-        return _fallback_append(existing, new_note)
-
     logger.info(
         "context rewrite ok existing=%s -> result=%s", len(existing), len(cleaned)
     )
     return cleaned
-
-
-def _fallback_append(existing: list[str], new_note: str) -> list[str]:
-    """Degrade to old behaviour: keep existing, add the new note if not a dupe."""
-    return _clean([*existing, new_note])
 
 
 def _clean(notes: Any) -> list[str]:

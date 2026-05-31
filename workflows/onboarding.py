@@ -9,7 +9,7 @@ _NUDGES = (
     (
         lambda p, ctx: ctx < 1,
         "Add a standing note and I will respect it in every photo estimate. "
-        "Try <code>/addcontext my chundo has no sugar</code>.",
+        "Try <code>/context my chundo has no sugar</code>.",
     ),
     (
         lambda p, ctx: not p.goal,

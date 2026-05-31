@@ -4,43 +4,36 @@ from analyzers.context.rewriter import ContextRewriter
 from presenters.profile_reply import format_context_list, format_context_saved
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
-from telegram.updates import AddContextCommand, ViewContextCommand
+from telegram.updates import EditContextCommand, ViewContextCommand
 from workflows.dm_reply import send_dm
 from workflows.onboarding import next_onboarding_nudge
 
 logger = logging.getLogger(__name__)
 
-# A single standing note is a short fact ("whole milk 6%"), not an essay. Capping
-# the raw input keeps one message from blowing out the rewrite prompt; the
-# rewriter trims each kept note further.
+# The free-text message is a short edit ("whole milk 6%", "forget the milk note"),
+# not an essay. Capping the raw input keeps one message from blowing out the rewrite
+# prompt; the rewriter trims each kept note further.
 CONTEXT_NOTE_MAX_LEN = 200
 
-_EMPTY_NOTE_REPLY = (
-    "Add a short note after the command, for example: "
-    "<code>/addcontext my chundo has no sugar</code>."
-)
 
-
-async def handle_add_context(
-    command: AddContextCommand,
+async def handle_edit_context(
+    command: EditContextCommand,
     *,
     repo: ProfileRepository,
     rewriter: ContextRewriter,
     telegram: TelegramBotApi,
 ) -> None:
-    note = command.text.strip()[:CONTEXT_NOTE_MAX_LEN].strip()
-    if not note:
-        await send_dm(telegram, command.chat_id, _EMPTY_NOTE_REPLY)
-        return
+    # The parser only builds this command when /context has text, so it is non-empty.
+    message = command.text.strip()[:CONTEXT_NOTE_MAX_LEN].strip()
 
-    # Feed the existing notes plus the new one through the AI rewriter so the
-    # stored set stays concise, deduped, and free of contradictions, then replace
-    # the whole list with the result.
+    # Hand the existing notes plus the person's message to the AI, which decides
+    # whether to add a fact, change one, or remove notes, and returns the full
+    # rewritten set. We then replace the stored list with the result.
     existing = await repo.list_context(command.user_id)
-    notes = await rewriter(existing=existing, new_note=note)
+    notes = await rewriter(existing=existing, message=message)
     count = await repo.replace_context(command.user_id, notes)
     logger.info(
-        "context add user=%s existing=%s stored=%s",
+        "context edit user=%s existing=%s stored=%s",
         command.user_id,
         len(existing),
         count,

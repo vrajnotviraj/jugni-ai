@@ -79,26 +79,36 @@ def format_profile_new_user(display_name: str) -> str:
 def format_context_list(notes: list[str]) -> str:
     if not notes:
         return (
-            "You have no context notes yet. Add one and I will respect it in "
+            "You have no context notes yet. Send me one and I will respect it in "
             "every future estimate, for example: "
-            "<code>/addcontext my chundo has no sugar</code>."
+            "<code>/context my chundo has no sugar</code>."
         )
     lines = ["📝 <b>Your context notes</b>"]
     lines.extend(f"• {escape(note, quote=False)}" for note in notes)
+    lines.append("")
+    lines.append(
+        "Change them any time, e.g. <code>/context forget the milk note</code>."
+    )
     return "\n".join(lines)
 
 
 def format_context_saved(notes: list[str], nudge: str | None) -> str:
-    # The notes are AI-consolidated on every add, so show the full current set
+    # The notes are AI-consolidated on every edit, so show the full current set
     # rather than just the line the user typed.
-    count = len(notes)
-    plural = "note" if count == 1 else "notes"
-    lines = [
-        "✅ <b>Context saved.</b>",
-        f"I tidied things up. You now have {count} {plural} I will factor into "
-        "your estimates:",
-    ]
-    lines.extend(f"• {escape(note, quote=False)}" for note in notes)
+    if not notes:
+        lines = [
+            "✅ <b>Done.</b> You have no context notes now.",
+            "Send me one any time, e.g. <code>/context my chundo has no sugar</code>.",
+        ]
+    else:
+        count = len(notes)
+        plural = "note" if count == 1 else "notes"
+        lines = [
+            "✅ <b>Context saved.</b>",
+            f"I tidied things up. You now have {count} {plural} I will factor into "
+            "your estimates:",
+        ]
+        lines.extend(f"• {escape(note, quote=False)}" for note in notes)
     if nudge:
         lines.append("")
         lines.append(nudge)
@@ -120,9 +130,10 @@ def format_help(display_name: str) -> str:
             "",
             "<b>/profile</b> — view your profile, or set it in plain words.",
             "  e.g. <code>/profile 5ft9, 72 kg, vegetarian, lose fat</code>",
-            "<b>/addcontext</b> — add a standing note I respect in estimates.",
-            "  e.g. <code>/addcontext my chundo has no sugar</code>",
-            "<b>/seecontext</b> — see your saved context notes.",
+            "<b>/context</b> — see your standing notes I respect in estimates.",
+            "  add or change one by writing it in plain words:",
+            "  e.g. <code>/context my chundo has no sugar</code>",
+            "  e.g. <code>/context forget the milk note</code>",
             "<b>/deleteprofile</b> — delete everything I store about you.",
             "",
             "Your profile is private to this chat and never shown in any group.",

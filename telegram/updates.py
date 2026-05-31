@@ -37,8 +37,10 @@ class ProfileCommand:
     text: str
 
 
+# /context <free text>: one message the AI interprets as an add, change, or
+# removal. Bare /context (no text) parses to ViewContextCommand instead.
 @dataclass(frozen=True, slots=True)
-class AddContextCommand:
+class EditContextCommand:
     user_id: int
     chat_id: int
     display_name: str
@@ -74,7 +76,7 @@ ParsedUpdate = (
     | SummaryCommand
     | DeleteCommand
     | ProfileCommand
-    | AddContextCommand
+    | EditContextCommand
     | ViewContextCommand
     | DeleteProfileCommand
     | HelpCommand
@@ -139,14 +141,15 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
                 display_name=display_name,
                 text=args,
             )
-        case "/addcontext":
-            return AddContextCommand(
-                user_id=user_id,
-                chat_id=chat_id,
-                display_name=display_name,
-                text=args,
-            )
-        case "/seecontext":
+        case "/context":
+            # Bare /context views the notes; any text is an AI-interpreted edit.
+            if args:
+                return EditContextCommand(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    display_name=display_name,
+                    text=args,
+                )
             return ViewContextCommand(user_id=user_id, chat_id=chat_id)
         case "/deleteprofile":
             return DeleteProfileCommand(user_id=user_id, chat_id=chat_id)

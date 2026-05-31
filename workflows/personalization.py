@@ -19,7 +19,7 @@ async def dietary_facts(
 
     Both sources are durable facts about what the person eats and will not eat
     (e.g. "vegetarian", "no eggs"): the structured `diet` field set during
-    profile setup, and the free-text notes added via /addcontext. The analyzers
+    profile setup, and the free-text notes managed via /context. The analyzers
     treat the combined string as hard constraints on any food they SUGGEST,
     never as instructions that change the calorie estimate or output format.
 

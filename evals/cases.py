@@ -59,9 +59,9 @@ class Day:
 
     async def context(self, user: str, text: str) -> None:
         reply = await self._world.command(
-            user_id=self._id(user), text=f"/addcontext {text}"
+            user_id=self._id(user), text=f"/context {text}"
         )
-        self._say(f"{user} adds a context note: {text}")
+        self._say(f"{user} sends a context message: {text}")
         self._say("↳ " + _reply(reply))
 
     async def post(

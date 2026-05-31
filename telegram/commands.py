@@ -8,8 +8,7 @@ command menu and autocomplete in DMs; groups keep using /summary and /delete.
 # (token, short description) — order is the order shown in the client menu.
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("profile", "View your profile, or set it in plain words"),
-    ("addcontext", "Add a standing note I use in your estimates"),
-    ("seecontext", "See your saved context notes"),
+    ("context", "See your notes, or 'add'/'update' to change them"),
     ("deleteprofile", "Delete everything I store about you"),
     ("start", "How this private chat works"),
     ("help", "Show the list of commands"),

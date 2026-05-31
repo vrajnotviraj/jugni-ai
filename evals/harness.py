@@ -100,7 +100,7 @@ class World:
         )
 
     async def command(self, *, user_id: int, text: str) -> dict:
-        """POST /api/profiles/simulate — runs a real DM command (/profile, /addcontext)."""
+        """POST /api/profiles/simulate — runs a real DM command (/profile, /context)."""
         return await simulate_command(
             payload=SimulateCommandRequest(
                 user_id=user_id, text=text, first_name="Eval"

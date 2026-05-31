@@ -12,9 +12,9 @@ from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import (
-    AddContextCommand,
     DeleteCommand,
     DeleteProfileCommand,
+    EditContextCommand,
     HelpCommand,
     Ignore,
     ParsedUpdate,
@@ -27,7 +27,7 @@ from telegram.updates import (
 from workflows.build_day_report import build_day_report
 from workflows.delete_meal import run_meal_deletion
 from workflows.dm_reply import send_dm
-from workflows.handle_context_command import handle_add_context, handle_view_context
+from workflows.handle_context_command import handle_edit_context, handle_view_context
 from workflows.handle_photo import handle_photo
 from workflows.handle_profile_command import (
     handle_delete_profile,
@@ -39,7 +39,8 @@ from workflows.send_day_report import send_day_report
 logger = logging.getLogger(__name__)
 
 # Launch-time abuse/cost stop-gap: each user gets this many LLM-backed private
-# commands (/profile with text, /addcontext) per day. Read-only commands are free.
+# commands (/profile with text, /context with text) per day. Read-only commands
+# are free.
 DAILY_LLM_LIMIT = 25
 
 _LIMIT_REPLY = (
@@ -165,11 +166,11 @@ async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None
                 telegram=deps.telegram,
             )
 
-        case AddContextCommand() as command:
-            # The AI rewrite runs on every add, so this is a capped LLM command.
+        case EditContextCommand() as command:
+            # The AI rewrite runs on every edit, so this is a capped LLM command.
             if not await _allow_llm_command(deps, command.user_id, command.chat_id):
                 return
-            await handle_add_context(
+            await handle_edit_context(
                 command,
                 repo=deps.profile_repo,
                 rewriter=deps.context_rewriter,
@@ -215,7 +216,7 @@ async def _allow_llm_command(
 def _command_text(parsed: ParsedUpdate) -> str:
     """The user-typed argument for a private command, for the received-log."""
     match parsed:
-        case ProfileCommand(text=text) | AddContextCommand(text=text):
+        case ProfileCommand(text=text) | EditContextCommand(text=text):
             return text
         case _:
             return ""
@@ -229,7 +230,7 @@ def _chat_id_of(parsed: ParsedUpdate) -> int | None:
             return chat_id
         case (
             ProfileCommand(chat_id=chat_id)
-            | AddContextCommand(chat_id=chat_id)
+            | EditContextCommand(chat_id=chat_id)
             | ViewContextCommand(chat_id=chat_id)
             | DeleteProfileCommand(chat_id=chat_id)
             | HelpCommand(chat_id=chat_id)
