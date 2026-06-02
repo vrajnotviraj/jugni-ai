@@ -1,10 +1,16 @@
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+# The local hour at which a new eating day begins. Meals logged before it (e.g. a
+# 3 AM late-night snack) count toward the previous day, so the morning-after
+# summary still reflects what was actually eaten "that night". Bucketing shifts
+# the clock back by this many hours before taking the calendar date.
+DAY_START_HOUR = 4
+
 
 def today_day_key(timezone: ZoneInfo, now: datetime | None = None) -> str:
     current = now or datetime.now(timezone)
-    return current.astimezone(timezone).date().isoformat()
+    return day_key_for_datetime(current, timezone)
 
 
 def recent_day_keys(as_of: str, count: int) -> list[str]:
@@ -18,7 +24,14 @@ def day_key_for_day_iso(day_iso: str) -> str:
 
 
 def day_key_for_datetime(value: datetime, timezone: ZoneInfo) -> str:
-    return value.astimezone(timezone).date().isoformat()
+    """The eating-day key for ``value`` in ``timezone``.
+
+    The local clock is shifted back by ``DAY_START_HOUR`` before the date is
+    taken, so the late-night tail of a day (00:00 up to ``DAY_START_HOUR``)
+    rolls into the previous eating day rather than starting a new one.
+    """
+    local = value.astimezone(timezone) - timedelta(hours=DAY_START_HOUR)
+    return local.date().isoformat()
 
 
 # Meal-period boundaries by local hour, shared by the day-over judgment and the
@@ -37,7 +50,12 @@ def summary_time_context(
 ) -> str:
     current = (now or datetime.now(timezone)).astimezone(timezone)
 
-    if day_key < current.date().isoformat() or current.hour >= DAY_OVER_HOUR:
+    # Compare against the *eating-day* key (same 4 AM rollover as the day_keys
+    # being summarised), not the raw calendar date. Using current.date() would
+    # mark the 00:00–DAY_START_HOUR late-night tail as a past day and wrongly
+    # report it "OVER" while the eating day is in fact still in progress.
+    current_day_key = day_key_for_datetime(current, timezone)
+    if day_key < current_day_key or current.hour >= DAY_OVER_HOUR:
         return (
             "The eating day is OVER; analyse it as a finished day with all three "
             "meal periods passed. Do not suggest eating now or a next meal for today."

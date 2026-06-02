@@ -5,8 +5,13 @@ from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
 
 
 class PhotoRepository(Protocol):
-    async def reserve(self, photo: Photo) -> bool:
-        """Reserve storage for an incoming photo. Return False if already stored."""
+    async def reserve(self, photo: Photo, *, day_key: str | None = None) -> bool:
+        """Reserve storage for an incoming photo. Return False if already stored.
+
+        ``day_key`` lets the caller bucket the meal into a specific local day
+        (e.g. computed in the sender's own timezone); when omitted the repository
+        falls back to the app-timezone day.
+        """
 
     async def complete(self, photo: Photo, analysis: FoodAnalysis) -> None:
         """Save a successful food analysis for a reserved photo."""
@@ -51,9 +56,6 @@ class PhotoRepository(Protocol):
         A cheap set-existence check (no photo hydration) — the basis for deriving
         streaks across many days for many users.
         """
-
-    async def daily_user_total(self, photo: Photo) -> int:
-        """Return the running calorie total for this photo's sender today."""
 
     async def daily_user_calories(
         self,

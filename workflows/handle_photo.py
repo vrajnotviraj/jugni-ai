@@ -31,7 +31,19 @@ async def handle_photo(
     image_bytes: bytes | None = None,
     media_type: str | None = None,
 ) -> FoodAnalysis | None:
-    if not await repo.reserve(photo):
+    # Personalization is best-effort and forward-looking: senderless uploads
+    # (sender_id is None) and people without a profile see the app-timezone
+    # default. We resolve the profile before reserving so the meal can be
+    # bucketed into the sender's own local day.
+    profile = await _load_profile(profile_repo, photo)
+    # Day bucketing now follows the sender's own timezone so a meal lands in the
+    # day they actually ate it (with a late-night rollover, so a 3 AM snack
+    # counts as the previous day); it falls back to the app timezone when the
+    # sender has no profile or timezone set.
+    user_zone = profile.zone(timezone) if profile else timezone
+    day_key = day_key_for_datetime(photo.sent_at, user_zone)
+
+    if not await repo.reserve(photo, day_key=day_key):
         logger.info("photo already stored, skipping msg=%s", photo.message_id)
         return None
 
@@ -46,15 +58,10 @@ async def handle_photo(
         telegram, photo, image_bytes, media_type
     )
 
-    # Personalization is best-effort and forward-looking: senderless uploads
-    # (sender_id is None) and people without a profile see today's exact behavior.
-    profile = await _load_profile(profile_repo, photo)
-    # Day bucketing stays on the app timezone (group summary coherence, KTD6);
-    # only the tip's clock follows the sender's own timezone.
-    user_zone = profile.zone(timezone) if profile else timezone
-
-    day_key = day_key_for_datetime(photo.sent_at, timezone)
     eaten_at = photo.sent_at.astimezone(user_zone).strftime("%H:%M")
+    # The eaten-at time is only meaningful (and only shown to the user) when they
+    # have actually set a timezone; otherwise it would be the app default's clock.
+    eaten_at_label = eaten_at if profile and profile.timezone else None
     prior = await repo.estimated_photos_for_user_day(
         chat_id=photo.chat_id, day_key=day_key, sender_label=photo.sender_label
     )
@@ -103,12 +110,19 @@ async def handle_photo(
     )
 
     await repo.complete(photo, analysis)
-    daily_total = await repo.daily_user_total(photo)
+    # Total for the sender's own local day, matching how the meal was bucketed.
+    daily_total = await repo.daily_user_calories(
+        chat_id=photo.chat_id, day_key=day_key, sender_label=photo.sender_label
+    )
     # Reinforce the streak only on the first meal of the local day (KTD4); `prior`
     # was read before this photo was stored, so empty means this is the first.
     streak_line = await _streak_line(repo, photo, day_key) if not prior else None
     reply = format_photo_reply(
-        photo.sender_label, analysis, daily_total, streak_line=streak_line
+        photo.sender_label,
+        analysis,
+        daily_total,
+        streak_line=streak_line,
+        eaten_at=eaten_at_label,
     )
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis

@@ -14,17 +14,27 @@ from storage._hash_codec import (
 )
 
 
+# TODO(timezone): meals are bucketed into a frozen, per-user local day-key
+# string at write time (the Redis set keys below). That means a user's later
+# timezone change does not re-bucket their history, and the same instant is
+# anchored to whatever zone we knew at write time. When this moves to a SQL DB,
+# store the raw instant in UTC (one canonical column) and derive the local day
+# at query time from the user's current timezone, so day boundaries follow the
+# profile rather than being baked into the storage key.
 class RedisPhotoRepository:
     def __init__(self, redis: Redis, *, timezone: ZoneInfo) -> None:
         self._redis = redis
         self._timezone = timezone
 
-    async def reserve(self, photo: Photo) -> bool:
+    async def reserve(self, photo: Photo, *, day_key: str | None = None) -> bool:
         photo_key = _photo_key(photo.chat_id, photo.message_id)
         if await self._redis.exists(photo_key):
             return False
 
-        day_key = self._day_key(photo)
+        # The caller may pass a day_key it computed in the sender's own timezone;
+        # we fall back to the app-timezone bucket only when it does not (e.g. a
+        # senderless upload or a caller without profile access).
+        day_key = day_key or self._day_key(photo)
         await self._redis.hset(photo_key, mapping=photo_to_hash(photo, day_key))
         await self._redis.sadd(_chat_day_key(photo.chat_id, day_key), photo.message_id)
         await self._redis.sadd(
@@ -113,13 +123,6 @@ class RedisPhotoRepository:
             for day_key, present in zip(day_keys, results, strict=True)
             if present
         }
-
-    async def daily_user_total(self, photo: Photo) -> int:
-        return await self.daily_user_calories(
-            chat_id=photo.chat_id,
-            day_key=self._day_key(photo),
-            sender_label=photo.sender_label,
-        )
 
     async def daily_user_calories(
         self,
