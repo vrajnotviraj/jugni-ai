@@ -13,7 +13,7 @@ from core.logging import configure_logging
 from core.settings import Settings
 from storage.factory import build_photo_repository, build_profile_repository
 from telegram.api import TelegramBotApi
-from telegram.commands import bot_commands
+from telegram.commands import bot_commands, group_commands
 from telegram.poller import poll_telegram_forever
 from workflows.dispatch_update import Dependencies, dispatch_update
 
@@ -90,11 +90,22 @@ async def lifespan(app: FastAPI):
 
 
 async def _register_bot_commands(telegram: TelegramBotApi) -> None:
-    # Idempotent: registers the DM command menu on every boot. A failure here
-    # must not stop the app from serving, so we log and move on.
+    # Idempotent: registers the DM and group command menus on every boot, each
+    # scoped so the client only offers profile/help commands in private chats and
+    # only /summary and /delete in groups. A failure here must not stop the app
+    # from serving, so we log and move on.
     try:
-        await telegram.set_my_commands(bot_commands())
-        logger.info("registered %s bot commands", len(bot_commands()))
+        await telegram.set_my_commands(
+            bot_commands(), scope={"type": "all_private_chats"}
+        )
+        await telegram.set_my_commands(
+            group_commands(), scope={"type": "all_group_chats"}
+        )
+        logger.info(
+            "registered %s private and %s group bot commands",
+            len(bot_commands()),
+            len(group_commands()),
+        )
     except Exception:
         logger.exception("failed to register bot commands at startup")
 

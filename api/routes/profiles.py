@@ -24,7 +24,7 @@ from api.dependencies import (
 from core.settings import Settings
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
-from telegram.commands import bot_commands
+from telegram.commands import bot_commands, group_commands
 from workflows.dispatch_update import Dependencies, dispatch_update
 
 logger = logging.getLogger(__name__)
@@ -111,15 +111,23 @@ async def register_commands(
     admin_secret: str | None = Depends(admin_secret_header),
 ) -> dict[str, Any]:
     verify_admin_secret(settings, admin_secret)
-    commands = bot_commands()
+    private = bot_commands()
+    group = group_commands()
     try:
-        await telegram.set_my_commands(commands)
+        await telegram.set_my_commands(private, scope={"type": "all_private_chats"})
+        await telegram.set_my_commands(group, scope={"type": "all_group_chats"})
     except Exception as error:
         logger.exception("admin register-commands failed")
         raise HTTPException(
             status_code=502, detail=f"setMyCommands failed: {error}"
         ) from error
-    return {"ok": True, "count": len(commands), "commands": commands}
+    return {
+        "ok": True,
+        "private_count": len(private),
+        "private_commands": private,
+        "group_count": len(group),
+        "group_commands": group,
+    }
 
 
 class _CapturingTelegram:

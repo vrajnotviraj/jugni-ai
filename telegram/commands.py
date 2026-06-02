@@ -1,11 +1,13 @@
-"""The bot's DM command menu, defined once and registered via setMyCommands.
+"""The bot's command menus, defined once and registered via setMyCommands.
 
 Telegram requires single lowercase tokens (no slash, no hyphens) and a non-empty
-description per command. Setting them globally makes them appear in the client's
-command menu and autocomplete in DMs; groups keep using /summary and /delete.
+description per command. Each menu is registered against a BotCommandScope so the
+client shows the right commands in the right place: the profile/help commands in
+private chats, and only /summary and /delete in groups.
 """
 
 # (token, short description) — order is the order shown in the client menu.
+# Private (DM) menu: the profile and help commands the bot handles in 1:1 chats.
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("profile", "View your profile, or set it in plain words"),
     ("context", "See your notes, or 'add'/'update' to change them"),
@@ -14,9 +16,23 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("help", "Show the list of commands"),
 )
 
+# Group menu: the only two commands the bot handles in group/supergroup chats.
+GROUP_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("summary", "Post today's calorie summary for this group"),
+    ("delete", "Reply to a food photo to remove it from today's tally"),
+)
 
-def bot_commands() -> list[dict[str, str]]:
+
+def _as_commands(commands: tuple[tuple[str, str], ...]) -> list[dict[str, str]]:
     return [
         {"command": token, "description": description}
-        for token, description in BOT_COMMANDS
+        for token, description in commands
     ]
+
+
+def bot_commands() -> list[dict[str, str]]:
+    return _as_commands(BOT_COMMANDS)
+
+
+def group_commands() -> list[dict[str, str]]:
+    return _as_commands(GROUP_COMMANDS)

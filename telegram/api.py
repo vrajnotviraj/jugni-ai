@@ -133,17 +133,28 @@ class TelegramBotApi:
                 f"Telegram sendDocument failed ({response.status_code}): {description}"
             )
 
-    async def set_my_commands(self, commands: list[dict[str, str]]) -> None:
+    async def set_my_commands(
+        self,
+        commands: list[dict[str, str]],
+        scope: dict[str, str] | None = None,
+    ) -> None:
+        scope_label = scope["type"] if scope else "default"
         if self._dry_run:
             print(
-                f"\n[DRY-RUN telegram] setMyCommands count={len(commands)}\n"
+                f"\n[DRY-RUN telegram] setMyCommands scope={scope_label} "
+                f"count={len(commands)}\n"
                 + "\n".join(f"  /{c['command']} - {c['description']}" for c in commands)
                 + "\n"
             )
-            logger.info("dry-run setMyCommands count=%s", len(commands))
+            logger.info(
+                "dry-run setMyCommands scope=%s count=%s", scope_label, len(commands)
+            )
             return
 
-        await self._call("setMyCommands", {"commands": commands})
+        payload: dict[str, object] = {"commands": commands}
+        if scope is not None:
+            payload["scope"] = scope
+        await self._call("setMyCommands", payload)
 
     async def _call(self, method: str, payload: dict[str, object]) -> dict:
         async with httpx.AsyncClient(timeout=30) as client:
