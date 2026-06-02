@@ -20,6 +20,7 @@ def format_photo_reply(
     analysis: FoodAnalysis,
     daily_total: int,
     streak_line: str | None = None,
+    eaten_at: str | None = None,
 ) -> str:
     if not analysis.is_food:
         return NOT_FOOD_REPLY
@@ -31,6 +32,10 @@ def format_photo_reply(
     confidence_line = _confidence_line(analysis.confidence)
 
     parts = [header, dish_line, calories_line]
+    # The eaten-at time is shown only when the caller resolved it (the sender has
+    # a timezone set), so the clock is genuinely theirs and not the app default.
+    if eaten_at:
+        parts.append(f"🕐 Logged at {escape(eaten_at, quote=False)}")
     try:
         macro_line = _macro_line(analysis)
     except Exception:

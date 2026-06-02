@@ -9,7 +9,12 @@ def daily_user_breakdown(
     photos: list[StoredPhoto],
     *,
     timezone: ZoneInfo,
+    zones: dict[str, ZoneInfo] | None = None,
 ) -> list[UserDay]:
+    # Each meal's time is shown in its sender's own timezone when known, so the
+    # summary reads in the clock they actually ate by; ``timezone`` (the app
+    # default) is the fallback for senders without a resolved zone.
+    zones = zones or {}
     accumulator: dict[str, list[Meal]] = {}
     calories: dict[str, int] = {}
     order: list[str] = []
@@ -18,7 +23,9 @@ def daily_user_breakdown(
         meal = Meal(
             dish=photo.dish.strip(),
             calories=photo.calories,
-            eaten_at=_format_local_time(photo.sent_at, timezone),
+            eaten_at=_format_local_time(
+                photo.sent_at, zones.get(photo.sender_label, timezone)
+            ),
             protein_g=photo.protein_g,
             carb_g=photo.carb_g,
             fat_g=photo.fat_g,

@@ -8,6 +8,7 @@ from domain.breakdown import daily_user_breakdown
 from domain.calorie_target import calorie_target, goal_summary, highlight_macro
 from domain.day import DayNote, DayReport, UserDay
 from domain.photo import StoredPhoto
+from domain.profile import UserProfile
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from workflows.personalization import dietary_facts
@@ -27,8 +28,20 @@ async def build_day_report(
 ) -> DayReport:
     day_key = day_key_for_day_iso(day_iso) if day_iso else today_day_key(timezone)
     photos = await repo.estimated_photos_for_day(chat_id=chat_id, day_key=day_key)
-    users = daily_user_breakdown(photos, timezone=timezone)
     sender_ids = _sender_ids_by_label(photos)
+    # Resolve each sender's profile once, up front: it drives their timezone (for
+    # both meal-time display and the note's clock), goal, and calorie target.
+    # Loading here avoids a second per-user fetch inside _note_for_user.
+    labels = list(dict.fromkeys(photo.sender_label for photo in photos))
+    loaded = await asyncio.gather(
+        *(_load_profile(sender_ids.get(label), profile_repo) for label in labels)
+    )
+    profiles = dict(zip(labels, loaded, strict=True))
+    zones = {
+        label: (profile.zone(timezone) if profile else timezone)
+        for label, profile in profiles.items()
+    }
+    users = daily_user_breakdown(photos, timezone=timezone, zones=zones)
     logger.info(
         "summary chat=%s day=%s photos=%s users=%s",
         chat_id,
@@ -42,10 +55,11 @@ async def build_day_report(
             _note_for_user(
                 user,
                 sender_id=sender_ids.get(user.sender_label),
+                profile=profiles.get(user.sender_label),
+                zone=zones.get(user.sender_label, timezone),
                 profile_repo=profile_repo,
                 day_summarizer=day_summarizer,
                 day_key=day_key,
-                timezone=timezone,
             )
             for user in users
         )
@@ -95,16 +109,15 @@ async def _note_for_user(
     user: UserDay,
     *,
     sender_id: int | None,
+    profile: UserProfile | None,
+    zone: ZoneInfo,
     profile_repo: ProfileRepository | None,
     day_summarizer: DaySummarizer,
     day_key: str,
-    timezone: ZoneInfo,
 ) -> tuple[DayNote, int | None, str | None]:
-    # Resolve the profile once: it gives the user's clock (R14), a goal-with-target
-    # phrase for the note, and a calorie target for ranking. Falls back to app tz /
-    # no goal / no target when the user has no profile, weight, or resolvable id.
-    profile = await _load_profile(sender_id, profile_repo)
-    zone = profile.zone(timezone) if profile else timezone
+    # The profile (resolved once by the caller) gives the user's clock (R14), a
+    # goal-with-target phrase for the note, and a calorie target for ranking.
+    # ``zone`` is already the user's timezone, or the app default as a fallback.
     # Compute the target once and reuse it for both the goal phrase and ranking.
     target = calorie_target(profile)
     goal = goal_summary(profile, target)
