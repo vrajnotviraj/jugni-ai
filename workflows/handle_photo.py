@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from analyzers.image.factory import ImageEstimator
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.calorie_target import goal_summary
+from domain.calorie_target import calorie_target, goal_summary
 from domain.photo import Photo, StoredPhoto
 from presenters.photo_reply import (
     PHOTO_REPLY_PARSE_MODE,
@@ -67,7 +67,10 @@ async def handle_photo(
     )
     prior_meals = _format_prior_meals(prior, user_zone)
     personal_context = await dietary_facts(profile, profile_repo, photo.sender_id)
-    personal_goal = goal_summary(profile)
+    # Compute the target once and reuse it for both the goal summary (prompt) and
+    # the reply's "Today's total" line so the figure is never derived twice.
+    target = calorie_target(profile)
+    personal_goal = goal_summary(profile, target)
 
     logger.info(
         "photo context msg=%s sender_id=%s has_profile=%s goal=%r tz=%s "
@@ -123,6 +126,7 @@ async def handle_photo(
         daily_total,
         streak_line=streak_line,
         eaten_at=eaten_at_label,
+        calorie_target=target,
     )
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis

@@ -21,6 +21,7 @@ def format_photo_reply(
     daily_total: int,
     streak_line: str | None = None,
     eaten_at: str | None = None,
+    calorie_target: int | None = None,
 ) -> str:
     if not analysis.is_food:
         return NOT_FOOD_REPLY
@@ -28,30 +29,39 @@ def format_photo_reply(
     header = f"{_dish_icon(analysis.dish)} <b>{escape(sender_label, quote=False)}'s meal</b>"
     dish_line = f"Dish: {escape(analysis.dish, quote=False)}"
     calories_line = f"{_calorie_icon(analysis.calories)} Calories: {analysis.calories} kcal"
-    today_line = f"{_day_progress_icon(daily_total)} Today's total: {daily_total} kcal"
+    today_line = _today_line(daily_total, calorie_target)
     confidence_line = _confidence_line(analysis.confidence)
 
-    parts = [header, dish_line, calories_line]
+    # The message is built as blank-line-separated groups so the streak shout-out
+    # gets its own breathing room instead of being wedged between the stats and
+    # the confidence line. Within a group the lines stay tight; the blank line
+    # only falls between groups.
+    identity = [header, dish_line]
     # The eaten-at time is shown only when the caller resolved it (the sender has
     # a timezone set), so the clock is genuinely theirs and not the app default.
     if eaten_at:
-        parts.append(f"🕐 Logged at {escape(eaten_at, quote=False)}")
+        identity.append(f"🕐 Logged at {escape(eaten_at, quote=False)}")
+
+    nutrition = [calories_line]
     try:
         macro_line = _macro_line(analysis)
     except Exception:
         logger.exception("macro line rendering failed; omitting it from the reply")
         macro_line = None
     if macro_line:
-        parts.append(macro_line)
-    parts.append(today_line)
+        nutrition.append(macro_line)
+    nutrition.append(today_line)
+    nutrition.append(confidence_line)
+
+    groups = [identity, nutrition]
     if streak_line:
-        parts.append(streak_line)
-    parts.append(confidence_line)
+        groups.append([streak_line])
 
     tip = (analysis.tip or "").strip()
     if tip:
-        parts.append(f"<blockquote>{escape(tip, quote=False)}</blockquote>")
-    return "\n".join(parts)
+        groups.append([f"<blockquote>{escape(tip, quote=False)}</blockquote>"])
+
+    return "\n\n".join("\n".join(group) for group in groups)
 
 
 # Milestone copy at 3/7/14/30 (KTD7); other lengths get a quiet count.
@@ -135,8 +145,39 @@ _DAY_PROGRESS_TIERS = (
 )
 _DAY_PROGRESS_OVER_ICON = "⚠️"
 
+# When the sender has a personal calorie target, day progress is shown as a
+# coloured-circle fill gauge (a fraction of THAT target), not the time-of-day
+# icons above, which read as morning/evening and get confused with the clock.
+# Green while there is room, amber as it fills, red once the target is crossed.
+_DAY_TARGET_TIERS = (
+    (0.7, "🟢"),
+    (0.95, "🟡"),
+    (1.0, "🟠"),
+)
+_DAY_TARGET_OVER_ICON = "🔴"
 
-def _day_progress_icon(daily_total: int) -> str:
+
+def _today_line(daily_total: int, target: int | None) -> str:
+    icon = _day_progress_icon(daily_total, target)
+    if target and target > 0:
+        if daily_total > target:
+            return (
+                f"{icon} Today's total: {daily_total} / {target} kcal "
+                f"({daily_total - target} over)"
+            )
+        return f"{icon} Today's total: {daily_total} / {target} kcal"
+    return f"{icon} Today's total: {daily_total} kcal"
+
+
+def _day_progress_icon(daily_total: int, target: int | None = None) -> str:
+    if target and target > 0:
+        if daily_total > target:
+            return _DAY_TARGET_OVER_ICON
+        fraction = daily_total / target
+        for threshold, icon in _DAY_TARGET_TIERS:
+            if fraction <= threshold:
+                return icon
+        return _DAY_TARGET_OVER_ICON
     for threshold, icon in _DAY_PROGRESS_TIERS:
         if daily_total < threshold:
             return icon
