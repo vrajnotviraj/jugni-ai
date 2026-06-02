@@ -50,7 +50,12 @@ def summary_time_context(
 ) -> str:
     current = (now or datetime.now(timezone)).astimezone(timezone)
 
-    if day_key < current.date().isoformat() or current.hour >= DAY_OVER_HOUR:
+    # Compare against the *eating-day* key (same 4 AM rollover as the day_keys
+    # being summarised), not the raw calendar date. Using current.date() would
+    # mark the 00:00–DAY_START_HOUR late-night tail as a past day and wrongly
+    # report it "OVER" while the eating day is in fact still in progress.
+    current_day_key = day_key_for_datetime(current, timezone)
+    if day_key < current_day_key or current.hour >= DAY_OVER_HOUR:
         return (
             "The eating day is OVER; analyse it as a finished day with all three "
             "meal periods passed. Do not suggest eating now or a next meal for today."
