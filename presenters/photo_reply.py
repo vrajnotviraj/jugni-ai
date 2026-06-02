@@ -26,9 +26,13 @@ def format_photo_reply(
     if not analysis.is_food:
         return NOT_FOOD_REPLY
 
-    header = f"{_dish_icon(analysis.dish)} <b>{escape(sender_label, quote=False)}'s meal</b>"
+    header = (
+        f"{_dish_icon(analysis.dish)} <b>{escape(sender_label, quote=False)}'s meal</b>"
+    )
     dish_line = f"Dish: {escape(analysis.dish, quote=False)}"
-    calories_line = f"{_calorie_icon(analysis.calories)} Calories: {analysis.calories} kcal"
+    calories_line = (
+        f"{_calorie_icon(analysis.calories)} Calories: {analysis.calories} kcal"
+    )
     today_line = _today_line(daily_total, calorie_target)
     confidence_line = _confidence_line(analysis.confidence)
 
@@ -158,14 +162,10 @@ _DAY_TARGET_OVER_ICON = "🔴"
 
 
 def _today_line(daily_total: int, target: int | None) -> str:
+    # The icon already encodes progress toward the personal target (a coloured-circle
+    # fill gauge), so the line itself only carries the running total — the explicit
+    # "/ target kcal" figure is dropped to keep the reply uncluttered.
     icon = _day_progress_icon(daily_total, target)
-    if target and target > 0:
-        if daily_total > target:
-            return (
-                f"{icon} Today's total: {daily_total} / {target} kcal "
-                f"({daily_total - target} over)"
-            )
-        return f"{icon} Today's total: {daily_total} / {target} kcal"
     return f"{icon} Today's total: {daily_total} kcal"
 
 
@@ -197,7 +197,19 @@ _DISH_KEYWORDS = (
     (("egg", "omelette", "omelet"), "🍳"),
     (("chicken", "fish", "meat", "lamb", "mutton", "beef", "pork", "kebab"), "🍗"),
     (("fruit", "apple", "banana", "mango", "berry", "orange"), "🍎"),
-    (("cake", "cookie", "brownie", "dessert", "ice cream", "icecream", "chocolate", "sweet"), "🍰"),
+    (
+        (
+            "cake",
+            "cookie",
+            "brownie",
+            "dessert",
+            "ice cream",
+            "icecream",
+            "chocolate",
+            "sweet",
+        ),
+        "🍰",
+    ),
     (("tea", "coffee", "chai", "latte"), "☕"),
     (("milk", "lassi", "smoothie", "shake", "juice"), "🥛"),
 )
