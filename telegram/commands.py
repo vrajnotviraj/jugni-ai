@@ -11,14 +11,16 @@ private chats, and only /summary and /delete in groups.
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("profile", "View your profile, or set it in plain words"),
     ("context", "See your notes, or 'add'/'update' to change them"),
+    ("recommend", "Suggest your next meal from your day and goal"),
     ("deleteprofile", "Delete everything I store about you"),
     ("start", "How this private chat works"),
     ("help", "Show the list of commands"),
 )
 
-# Group menu: the only two commands the bot handles in group/supergroup chats.
+# Group menu: the commands the bot handles in group/supergroup chats.
 GROUP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("summary", "Post today's calorie summary for this group"),
+    ("recommend", "Suggest your next meal from your day and goal"),
     ("delete", "Reply to a food photo to remove it from today's tally"),
 )
 

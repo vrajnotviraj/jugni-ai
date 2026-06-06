@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from analyzers.context.rewriter import build_context_rewriter
 from analyzers.image.factory import build_image_estimator
 from analyzers.profile.extractor import build_profile_extractor
+from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
 from core.logging import configure_logging
 from core.settings import Settings
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     day_summarizer = build_day_summarizer(settings, openai_client)
     profile_extractor = build_profile_extractor(settings, openai_client)
     context_rewriter = build_context_rewriter(settings, openai_client)
+    recommender = build_recommender(settings, openai_client)
 
     deps = Dependencies(
         repo=repo,
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
         day_summarizer=day_summarizer,
         profile_extractor=profile_extractor,
         context_rewriter=context_rewriter,
+        recommender=recommender,
         telegram=telegram,
         timezone=settings.timezone,
         allowed_chat_ids=settings.telegram_group_chat_ids,

@@ -6,12 +6,13 @@ from zoneinfo import ZoneInfo
 from analyzers.context.rewriter import ContextRewriter
 from analyzers.image.factory import ImageEstimator
 from analyzers.profile.extractor import ProfileExtractor
+from analyzers.recommend.recommender import Recommender
 from analyzers.summary.factory import DaySummarizer
-from core.dates import today_day_key
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import (
+    CallbackPressed,
     DeleteCommand,
     DeleteProfileCommand,
     EditContextCommand,
@@ -20,13 +21,13 @@ from telegram.updates import (
     ParsedUpdate,
     PhotoMessage,
     ProfileCommand,
+    RecommendCommand,
     SummaryCommand,
     ViewContextCommand,
     parse_update,
 )
 from workflows.build_day_report import build_day_report
 from workflows.delete_meal import run_meal_deletion
-from workflows.dm_reply import send_dm
 from workflows.handle_context_command import handle_edit_context, handle_view_context
 from workflows.handle_photo import handle_photo
 from workflows.handle_profile_command import (
@@ -34,21 +35,18 @@ from workflows.handle_profile_command import (
     handle_help,
     handle_profile_command,
 )
+from workflows.handle_recommend import (
+    handle_recommend_callback,
+    handle_recommend_command,
+)
+from workflows.llm_cap import allow_llm_command
 from workflows.send_day_report import send_day_report
 
 logger = logging.getLogger(__name__)
 
-# Launch-time abuse/cost stop-gap: each user gets this many LLM-backed private
-# commands (/profile with text, /context with text) per day. Read-only commands
-# are free.
-DAILY_LLM_LIMIT = 25
-
-_LIMIT_REPLY = (
-    "You have hit today's limit for AI replies. Try again tomorrow. "
-    "Your profile and notes are saved and still work on every photo."
-)
-
 # Parsed types that originate in a group chat and stay behind the group allowlist.
+# RecommendCommand and CallbackPressed exist on both surfaces, so their gating
+# is decided per-instance in _is_group_surface, not by type membership here.
 _GROUP_TYPES = (PhotoMessage, SummaryCommand, DeleteCommand)
 
 
@@ -60,6 +58,7 @@ class Dependencies:
     day_summarizer: DaySummarizer
     profile_extractor: ProfileExtractor
     context_rewriter: ContextRewriter
+    recommender: Recommender
     telegram: TelegramBotApi
     timezone: ZoneInfo
     allowed_chat_ids: tuple[int, ...]
@@ -71,7 +70,7 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
     if chat_id is None:
         return
 
-    if isinstance(parsed, _GROUP_TYPES):
+    if _is_group_surface(parsed):
         # Group surface keeps its default-deny allowlist.
         if deps.allowed_chat_ids and chat_id not in deps.allowed_chat_ids:
             logger.info(
@@ -82,11 +81,12 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
         await _dispatch_group(parsed, chat_id=chat_id, deps=deps)
         return
 
-    # INTENTIONAL BYPASS: private (DM) commands skip the group allowlist. The
-    # profile surface is global per person and tied to no group, so gating it on
-    # allowed_chat_ids would block every DM. Authenticity for this write surface
-    # comes from the required Telegram webhook secret (see api/lifespan.py), not
-    # the allowlist. Do not "restore" an allowlist check here.
+    # INTENTIONAL BYPASS: private (DM) commands and DM callback presses skip
+    # the group allowlist. The profile surface is global per person and tied to
+    # no group, so gating it on allowed_chat_ids would block every DM.
+    # Authenticity for this write surface comes from the required Telegram
+    # webhook secret (see api/lifespan.py), not the allowlist. Do not "restore"
+    # an allowlist check here.
     logger.info(
         "dm received chat=%s command=%s text=%r",
         chat_id,
@@ -150,6 +150,9 @@ async def _dispatch_group(
             )
             await send_day_report(telegram=deps.telegram, report=report)
 
+        case RecommendCommand() | CallbackPressed():
+            await _dispatch_recommend(parsed, deps=deps)
+
 
 async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None:
     match parsed:
@@ -190,33 +193,70 @@ async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None
         case HelpCommand() as command:
             await handle_help(command, telegram=deps.telegram)
 
+        case RecommendCommand() | CallbackPressed():
+            await _dispatch_recommend(parsed, deps=deps)
+
+
+async def _dispatch_recommend(parsed: ParsedUpdate, *, deps: Dependencies) -> None:
+    """Route /recommend traffic; both surfaces share these two arms.
+
+    A one-step command (text present) is charged here, before any LLM work;
+    a bare command only sends the free slot keyboard. Presses charge inside
+    the handler, after the requester gate (no LLM call for a stranger's tap).
+    """
+    handler_deps = dict(
+        repo=deps.repo,
+        profile_repo=deps.profile_repo,
+        recommender=deps.recommender,
+        telegram=deps.telegram,
+        timezone=deps.timezone,
+        allowed_chat_ids=deps.allowed_chat_ids,
+    )
+    match parsed:
+        case RecommendCommand() as command:
+            if command.text and not await _allow_llm_command(
+                deps, command.user_id, command.chat_id
+            ):
+                return
+            await handle_recommend_command(command, **handler_deps)
+
+        case CallbackPressed() as pressed:
+            await handle_recommend_callback(pressed, **handler_deps)
+
+
+def _is_group_surface(parsed: ParsedUpdate) -> bool:
+    """Whether this update belongs behind the group allowlist."""
+    match parsed:
+        case RecommendCommand(surface=surface):
+            return surface == "group"
+        case CallbackPressed(chat_is_group=chat_is_group):
+            return chat_is_group
+        case _:
+            return isinstance(parsed, _GROUP_TYPES)
+
 
 async def _allow_llm_command(
     deps: Dependencies,
     user_id: int,
     chat_id: int,
 ) -> bool:
-    """Count one LLM-backed command against the daily cap; reply and bail if over."""
-    day_key = today_day_key(deps.timezone)
-    count = await deps.profile_repo.bump_daily_llm_count(user_id, day_key)
-    logger.info(
-        "dm rate-cap user=%s day=%s count=%s/%s",
-        user_id,
-        day_key,
-        count,
-        DAILY_LLM_LIMIT,
+    return await allow_llm_command(
+        profile_repo=deps.profile_repo,
+        telegram=deps.telegram,
+        timezone=deps.timezone,
+        user_id=user_id,
+        chat_id=chat_id,
     )
-    if count > DAILY_LLM_LIMIT:
-        logger.info("dm rate-cap hit user=%s, replying with limit notice", user_id)
-        await send_dm(deps.telegram, chat_id, _LIMIT_REPLY)
-        return False
-    return True
 
 
 def _command_text(parsed: ParsedUpdate) -> str:
     """The user-typed argument for a private command, for the received-log."""
     match parsed:
-        case ProfileCommand(text=text) | EditContextCommand(text=text):
+        case (
+            ProfileCommand(text=text)
+            | EditContextCommand(text=text)
+            | RecommendCommand(text=text)
+        ):
             return text
         case _:
             return ""
@@ -234,6 +274,8 @@ def _chat_id_of(parsed: ParsedUpdate) -> int | None:
             | ViewContextCommand(chat_id=chat_id)
             | DeleteProfileCommand(chat_id=chat_id)
             | HelpCommand(chat_id=chat_id)
+            | RecommendCommand(chat_id=chat_id)
+            | CallbackPressed(chat_id=chat_id)
         ):
             return chat_id
         case Ignore():

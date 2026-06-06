@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from domain.photo import Photo
+from domain.photo import Photo, sender_label_from
 
 GROUP_CHAT_TYPES = {"group", "supergroup"}
 PRIVATE_CHAT_TYPE = "private"
@@ -66,6 +66,19 @@ class HelpCommand:
     display_name: str
 
 
+# /recommend works on both surfaces; ``surface`` records which one so dispatch
+# can keep the group allowlist gate. ``text`` is the raw argument string; the
+# recommend workflow extracts the slot/modifier keywords itself.
+@dataclass(frozen=True, slots=True)
+class RecommendCommand:
+    user_id: int
+    chat_id: int
+    sender_label: str
+    display_name: str
+    text: str
+    surface: str  # "dm" | "group"
+
+
 # A press on any inline-keyboard button. Feature-agnostic transport type: the
 # raw ``data`` string flows through untouched and the owning workflow parses
 # its own grammar (e.g. the recommend flow's "rec:..."). ``data`` arrives from
@@ -74,6 +87,7 @@ class HelpCommand:
 class CallbackPressed:
     callback_query_id: str
     presser_id: int
+    presser_label: str
     chat_id: int
     chat_is_group: bool
     message_id: int
@@ -94,6 +108,7 @@ ParsedUpdate = (
     | ViewContextCommand
     | DeleteProfileCommand
     | HelpCommand
+    | RecommendCommand
     | CallbackPressed
     | Ignore
 )
@@ -129,6 +144,9 @@ def _parse_group_message(
 ) -> ParsedUpdate:
     if _leading_command(message) == "/summary":
         return SummaryCommand(chat_id=int(message["chat"]["id"]))
+
+    if _leading_command(message) == "/recommend":
+        return _parse_recommend_command(message, surface="group")
 
     delete_command = _parse_delete_command(message)
     if delete_command is not None:
@@ -172,6 +190,8 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
                     text=args,
                 )
             return ViewContextCommand(user_id=user_id, chat_id=chat_id)
+        case "/recommend":
+            return _parse_recommend_command(message, surface="dm")
         case "/deleteprofile":
             return DeleteProfileCommand(user_id=user_id, chat_id=chat_id)
         case "/start" | "/help":
@@ -182,6 +202,26 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
             return Ignore()
 
 
+def _parse_recommend_command(
+    message: dict[str, Any],
+    *,
+    surface: str,
+) -> ParsedUpdate:
+    sender = message.get("from") or {}
+    user_id = sender.get("id")
+    if user_id is None:
+        return Ignore()
+    _, args = _command_and_args(message)
+    return RecommendCommand(
+        user_id=int(user_id),
+        chat_id=int(message["chat"]["id"]),
+        sender_label=sender_label_from(sender),
+        display_name=_display_name(sender),
+        text=args,
+        surface=surface,
+    )
+
+
 def _parse_callback_query(update: dict[str, Any]) -> "CallbackPressed | None":
     callback = update.get("callback_query")
     if not callback:
@@ -189,13 +229,15 @@ def _parse_callback_query(update: dict[str, Any]) -> "CallbackPressed | None":
     # ``message`` is the keyboard's host message; Telegram may omit it for very
     # old presses, in which case there is nothing useful to act on.
     message = callback.get("message") or {}
-    presser_id = (callback.get("from") or {}).get("id")
+    presser = callback.get("from") or {}
+    presser_id = presser.get("id")
     chat = message.get("chat") or {}
     if presser_id is None or chat.get("id") is None:
         return None
     return CallbackPressed(
         callback_query_id=str(callback.get("id", "")),
         presser_id=int(presser_id),
+        presser_label=sender_label_from(presser),
         chat_id=int(chat["id"]),
         chat_is_group=chat.get("type") in GROUP_CHAT_TYPES,
         message_id=int(message.get("message_id") or 0),
