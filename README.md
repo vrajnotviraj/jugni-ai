@@ -68,7 +68,7 @@ Streaks shipped first (see [Streaks](#streaks)): the bot now knows when you post
 
 Weekly analysis comes after that. The bot can spot patterns a single day misses: low protein breakfasts, late dinners, too many liquid calories, or the famous "healthy Monday, chaos by Thursday" graph.
 
-Meal recommendations shipped too (see [Meal recommendations](#meal-recommendations-recommend)): `/recommend` suggests your next meal from your past meals, today's gaps, and your goal.
+Meal recommendations shipped too (see [Meal recommendations](#meal-recommendations-recommend)): `/recommend` suggests your next meal from today's gaps and your goal.
 
 There should also be a preference page.
 
@@ -85,7 +85,7 @@ command menu
 | ---------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `/profile`       | View your profile, or set it in plain words (an LLM extracts height, weight, age, sex, activity, goal, diet, timezone) | `/profile 5ft9, 72 kg, 31M, gym 4x a week, vegetarian, want to lose fat` |
 | `/context`       | Bare: list your saved context notes. With text: an LLM folds it into your notes (add, change, or remove), keeping them concise and deduped | `/context my chundo has no sugar`                    |
-| `/recommend`     | Suggest your next meal from your day, history, and goal (see [Meal recommendations](#meal-recommendations-recommend)) | `/recommend light dinner`                            |
+| `/recommend`     | Suggest your next meal from your day and goal (see [Meal recommendations](#meal-recommendations-recommend)) | `/recommend light dinner`                            |
 | `/deleteprofile` | Delete your profile, context, and weight history                                                   | `/deleteprofile`                                     |
 
 Notes:
@@ -124,9 +124,9 @@ Each reply gives 2-4 realistic options with a rough calorie range, the plate's
 macro shape in words, and why it fits today.
 
 What it uses: your goal and dietary limits (profile + context notes), today's
-logged meals and their macro gaps, and your last ~10 days of meals for cuisine
-and familiarity. All numbers are precomputed by the bot; the LLM only chooses
-and explains. No history yet? It says so and goes by your goal alone.
+logged meals, and today's macro gaps. All numbers are precomputed by the bot;
+the LLM only chooses and explains. No meals logged today? It says so and goes
+by your goal alone.
 
 Notes:
 
@@ -141,7 +141,7 @@ Notes:
 - **Cost cap.** Each recommendation counts against the same daily AI-reply
   limit as other LLM commands. The button prompt itself is free.
 - **Limits.** Calorie figures are honest ranges, not measurements. Suggestions
-  are ideas from your own eating patterns, not medical or dietetic advice.
+  are food ideas for today, not medical or dietetic advice.
 
 ## Setup
 

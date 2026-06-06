@@ -7,6 +7,7 @@ from analyzers.summary.factory import DaySummarizer
 from core.settings import Settings
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
+from storage.webhook_dedupe import WebhookDedupe
 from telegram.api import TelegramBotApi
 from workflows.dispatch_update import Dependencies
 
@@ -25,6 +26,10 @@ def get_repo(request: Request) -> PhotoRepository:
 
 def get_profile_repo(request: Request) -> ProfileRepository:
     return request.app.state.profile_repo
+
+
+def get_webhook_dedupe(request: Request) -> WebhookDedupe:
+    return request.app.state.webhook_dedupe
 
 
 def get_image_estimator(request: Request) -> ImageEstimator:
