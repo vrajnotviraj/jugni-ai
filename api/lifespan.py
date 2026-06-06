@@ -12,7 +12,11 @@ from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
 from core.logging import configure_logging
 from core.settings import Settings
-from storage.factory import build_photo_repository, build_profile_repository
+from storage.factory import (
+    build_photo_repository,
+    build_profile_repository,
+    build_webhook_dedupe,
+)
 from telegram.api import TelegramBotApi
 from telegram.commands import bot_commands, group_commands
 from telegram.poller import poll_telegram_forever
@@ -33,6 +37,7 @@ async def lifespan(app: FastAPI):
     )
     repo = build_photo_repository(settings)
     profile_repo = build_profile_repository(settings)
+    webhook_dedupe = build_webhook_dedupe(settings)
     image_estimator = build_image_estimator(settings, openai_client)
     day_summarizer = build_day_summarizer(settings, openai_client)
     profile_extractor = build_profile_extractor(settings, openai_client)
@@ -56,6 +61,7 @@ async def lifespan(app: FastAPI):
     app.state.telegram = telegram
     app.state.repo = repo
     app.state.profile_repo = profile_repo
+    app.state.webhook_dedupe = webhook_dedupe
     app.state.image_estimator = image_estimator
     app.state.day_summarizer = day_summarizer
     app.state.deps = deps
@@ -90,6 +96,7 @@ async def lifespan(app: FastAPI):
                 await polling_task
         await repo.close()
         await profile_repo.close()
+        await webhook_dedupe.close()
 
 
 async def _register_bot_commands(telegram: TelegramBotApi) -> None:

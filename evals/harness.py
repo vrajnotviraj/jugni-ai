@@ -164,7 +164,7 @@ class World:
         """Send a real /recommend update through dispatch; returns the reply.
 
         ``username`` must match the label meals were seeded under (minus the
-        "@") or the history join silently tests the empty-history path."""
+        "@") or the day-meal join silently tests the empty-day path."""
         before = len(self.tg.sent)
         chat = (
             {"id": self.chat_id, "type": "supergroup"}
@@ -281,7 +281,7 @@ async def build_world() -> World:
         telegram=tg,
         timezone=s.timezone,
         # The eval chat is the one allowed group, so group-surface dispatch
-        # passes the allowlist and DM /recommend bridges history to it.
+        # passes the allowlist and DM /recommend can read today's meals from it.
         allowed_chat_ids=(EVAL_CHAT_ID,),
     )
     return World(

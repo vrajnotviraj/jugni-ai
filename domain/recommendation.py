@@ -1,8 +1,8 @@
 """Typed objects and pure rules for /recommend meal suggestions.
 
-The deterministic envelope: code computes today's gap flags, preference
-signals, and a rule-based fallback; the LLM only chooses and explains inside
-it ("LLM perceives, code grades"). Nothing here does I/O.
+The deterministic envelope: code computes today's gap flags and a rule-based
+fallback; the LLM only chooses and explains inside it ("LLM perceives, code
+grades"). Nothing here does I/O.
 """
 
 from dataclasses import dataclass
@@ -58,8 +58,6 @@ class MealRecommendationContext:
     today_calories: int
     macros: DayMacros
     gaps: tuple[str, ...]
-    preferences: tuple[str, ...]  # frequent recent dishes, most frequent first
-    has_history: bool
     calorie_target: int | None = None  # DM only
     protein_target_g: int | None = None  # DM only
     remaining_kcal: int | None = None  # DM only
@@ -104,25 +102,6 @@ def macro_gaps(
 def gap_phrases(gaps: tuple[str, ...]) -> str:
     """The gap flags as plain words for the prompt and fallback lead line."""
     return "; ".join(_GAP_PHRASES[gap] for gap in gaps if gap in _GAP_PHRASES)
-
-
-# --- Preference signals --------------------------------------------------- #
-
-
-def preference_signals(dishes: list[str], limit: int = 5) -> tuple[str, ...]:
-    """Dishes repeated in recent history, most frequent first (soft preferences).
-
-    A simple normalized-name frequency count, no NLP: only dishes logged at
-    least twice count as a signal, capped to a handful of entries.
-    """
-    counts: dict[str, list] = {}
-    for dish in dishes:
-        key = dish.strip().casefold()
-        if key:
-            counts.setdefault(key, [0, dish.strip()])[0] += 1
-    repeated = [(n, name) for n, name in counts.values() if n >= 2]
-    repeated.sort(key=lambda pair: -pair[0])
-    return tuple(name for _, name in repeated[:limit])
 
 
 # --- Rule-based fallback (R18) -------------------------------------------- #

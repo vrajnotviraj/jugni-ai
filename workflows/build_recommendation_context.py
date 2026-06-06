@@ -1,16 +1,16 @@
 """Assemble the deterministic envelope for a /recommend request.
 
 Everything the recommender prompt may state as fact is computed here: today's
-totals, gaps, targets, history-derived preference signals, and the time/slot
-read. The group surface never receives weight-invertible numbers (raw targets,
-absolute remaining budget) — privacy by construction, not prompt instruction.
+totals, gaps, targets, and the time/slot read. The group surface never receives
+weight-invertible numbers (raw targets, absolute remaining budget) — privacy by
+construction, not prompt instruction.
 """
 
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core.dates import DAY_OVER_HOUR, next_meal_slot, recent_day_keys, today_day_key
+from core.dates import DAY_OVER_HOUR, next_meal_slot, today_day_key
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.day import DayMacros
 from domain.photo import StoredPhoto
@@ -18,16 +18,12 @@ from domain.recommendation import (
     MIN_MEAL_KCAL,
     MealRecommendationContext,
     macro_gaps,
-    preference_signals,
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from workflows.personalization import dietary_facts
 
 logger = logging.getLogger(__name__)
-
-# How many past eating days feed the preference signals.
-HISTORY_DAYS = 10
 
 
 async def build_recommendation_context(
@@ -44,17 +40,20 @@ async def build_recommendation_context(
 ) -> MealRecommendationContext:
     """Build the recommendation context for one user.
 
-    ``chat_id`` is the group chat holding the meal history (the command's own
+    ``chat_id`` is the group chat holding today's meals (the command's own
     chat on the group surface, the first allowed group for a DM); ``None``
-    means no history source at all, which degrades to a profile-only context.
+    means no meal source at all, which degrades to a profile-only context.
     """
     profile = await profile_repo.get_profile(user_id)
     zone = profile.zone(timezone) if profile else timezone
     today_key = today_day_key(zone)
 
-    today, history = await _user_meals(
-        repo, chat_id=chat_id, user_id=user_id,
-        sender_label=sender_label, today_key=today_key,
+    today = await _user_meals(
+        repo,
+        chat_id=chat_id,
+        user_id=user_id,
+        sender_label=sender_label,
+        today_key=today_key,
     )
 
     today_calories = sum(photo.calories for photo in today)
@@ -78,12 +77,14 @@ async def build_recommendation_context(
     resolved_slot = slot or next_meal_slot(zone)
 
     dietary = await dietary_facts(profile, profile_repo, user_id)
-    history_dishes = [p.dish for p in history if p.dish]
 
     is_group = surface == "group"
     logger.info(
-        "recommend context user=%s surface=%s slot=%s today_meals=%s history=%s",
-        user_id, surface, resolved_slot, len(today), len(history_dishes),
+        "recommend context user=%s surface=%s slot=%s today_meals=%s",
+        user_id,
+        surface,
+        resolved_slot,
+        len(today),
     )
     return MealRecommendationContext(
         surface=surface,
@@ -100,8 +101,6 @@ async def build_recommendation_context(
         today_calories=today_calories,
         macros=macros,
         gaps=gaps,
-        preferences=preference_signals(history_dishes),
-        has_history=bool(history_dishes),
         # Weight-invertible numbers never enter a group-surface context.
         calorie_target=None if is_group else target,
         protein_target_g=None if is_group else protein_target,
@@ -117,22 +116,20 @@ async def _user_meals(
     user_id: int,
     sender_label: str,
     today_key: str,
-) -> tuple[list[StoredPhoto], list[StoredPhoto]]:
-    """One user's (today, recent-history) meals from the group's stored photos.
+) -> list[StoredPhoto]:
+    """One user's meals today from the group's stored photos.
 
     Selection is by stable sender_id first; the display-label fallback applies
-    only to senderless photos and only while the label is unambiguous across
-    the whole range — a label claimed by another member yields no match rather
+    only to senderless photos and only while the label is unambiguous today —
+    a label claimed by another member yields no match rather
     than a guess (two members named "Raj" must never read each other's meals).
     """
     if chat_id is None:
-        return [], []
-    day_keys = recent_day_keys(today_key, HISTORY_DAYS + 1)
-    by_day = await repo.estimated_photos_for_range(chat_id=chat_id, day_keys=day_keys)
+        return []
+    photos = await repo.estimated_photos_for_day(chat_id=chat_id, day_key=today_key)
 
     label_claimed_by_other = any(
         p.sender_id not in (None, user_id) and p.sender_label == sender_label
-        for photos in by_day.values()
         for p in photos
     )
 
@@ -141,15 +138,7 @@ async def _user_meals(
             return photo.sender_id == user_id
         return photo.sender_label == sender_label and not label_claimed_by_other
 
-    today = [p for p in by_day.get(today_key, []) if mine(p)]
-    history = [
-        p
-        for day, photos in by_day.items()
-        if day != today_key
-        for p in photos
-        if mine(p)
-    ]
-    return today, history
+    return [p for p in photos if mine(p)]
 
 
 def _remaining(target: int | None, consumed: int) -> int | None:
