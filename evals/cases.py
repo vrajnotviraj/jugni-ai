@@ -178,7 +178,8 @@ class Day:
         self._say(f"{user} sends /recommend {text}".rstrip() + where)
         if reply:
             print("\n" + _plain(reply) + "\n")
-        if judge and reply:
+        if judge:
+            # An empty reply is judged too, so a dropped command fails loudly.
             self.to_judge.append((f"recommend · {user}", _plain(reply), judge))
         return reply
 
