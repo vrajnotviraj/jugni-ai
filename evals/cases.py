@@ -372,9 +372,26 @@ async def case_rec_history(day: Day) -> None:
 
 async def case_rec_group_privacy(day: Day) -> None:
     """A group recommendation never leaks body stats, targets, or a health condition."""
+    from workflows.build_recommendation_context import build_recommendation_context
+
     await day.profile("@aarav", "5ft9, 72 kg, 34 years old, male, want to lose fat")
     await day.context("@aarav", "I am diabetic")
     await day.seed_dish("@aarav", "Poha with peanuts", 350, protein=9, carb=55, at_hour=9)
+
+    # By construction (deterministic): the group-variant context never carries
+    # weight-invertible numbers, even with a full profile on file.
+    world = day._world
+    context = await build_recommendation_context(
+        user_id=day._id("@aarav"), sender_label="@aarav", surface="group",
+        slot="dinner", modifier=None, repo=world.photo_repo,
+        profile_repo=world.profile_repo, chat_id=world.chat_id,
+        timezone=world.settings.timezone,
+    )
+    assert context.calorie_target is None
+    assert context.protein_target_g is None
+    assert context.remaining_kcal is None
+    day._say("group context carries no raw targets or remaining budget")
+
     await day.recommend("@aarav", "dinner", group=True, judge=REC_GROUP_PRIVATE)
 
 

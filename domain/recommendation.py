@@ -245,9 +245,10 @@ _DAIRY_FOODS = ("paneer", "curd", "milk", "chaas")
 
 
 def _excluded_foods(dietary: str | None) -> set[str]:
-    text = (dietary or "").casefold()
+    text = (dietary or "").casefold().replace("-", " ")
     excluded: set[str] = set()
-    if "veg" in text or "jain" in text:  # vegetarian, veg, vegan, jain
+    # vegetarian, veg, vegan, jain — but not "non veg"/"non-vegetarian".
+    if ("veg" in text and "non veg" not in text) or "jain" in text:
         excluded.update(_NON_VEG_FOODS)
     if "vegan" in text:
         excluded.update(_DAIRY_FOODS)
