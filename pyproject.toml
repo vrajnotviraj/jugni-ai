@@ -63,6 +63,7 @@ select = [
 "analyzers/summary/prompts.py" = ["E501"]
 "analyzers/profile/prompts.py" = ["E501"]
 "analyzers/context/prompts.py" = ["E501"]
+"analyzers/recommend/prompts.py" = ["E501"]
 "presenters/day_summary.py" = ["E501"]
 "api/routes/*.py" = ["B008"]
 "evals/*.py" = ["E501"]
