@@ -66,6 +66,20 @@ class HelpCommand:
     display_name: str
 
 
+# A press on any inline-keyboard button. Feature-agnostic transport type: the
+# raw ``data`` string flows through untouched and the owning workflow parses
+# its own grammar (e.g. the recommend flow's "rec:..."). ``data`` arrives from
+# the client and is treated as attacker-controlled everywhere downstream.
+@dataclass(frozen=True, slots=True)
+class CallbackPressed:
+    callback_query_id: str
+    presser_id: int
+    chat_id: int
+    chat_is_group: bool
+    message_id: int
+    data: str
+
+
 @dataclass(frozen=True, slots=True)
 class Ignore:
     pass
@@ -80,11 +94,18 @@ ParsedUpdate = (
     | ViewContextCommand
     | DeleteProfileCommand
     | HelpCommand
+    | CallbackPressed
     | Ignore
 )
 
 
 def parse_update(update: dict[str, Any]) -> ParsedUpdate:
+    # Callback presses are not message-shaped (no chat.type/date at the top),
+    # so they branch off before any of the message-reading logic below.
+    callback = _parse_callback_query(update)
+    if callback is not None:
+        return callback
+
     message = _message_from_update(update)
     chat_type = message.get("chat", {}).get("type")
     if chat_type in GROUP_CHAT_TYPES:
@@ -159,6 +180,27 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
             )
         case _:
             return Ignore()
+
+
+def _parse_callback_query(update: dict[str, Any]) -> "CallbackPressed | None":
+    callback = update.get("callback_query")
+    if not callback:
+        return None
+    # ``message`` is the keyboard's host message; Telegram may omit it for very
+    # old presses, in which case there is nothing useful to act on.
+    message = callback.get("message") or {}
+    presser_id = (callback.get("from") or {}).get("id")
+    chat = message.get("chat") or {}
+    if presser_id is None or chat.get("id") is None:
+        return None
+    return CallbackPressed(
+        callback_query_id=str(callback.get("id", "")),
+        presser_id=int(presser_id),
+        chat_id=int(chat["id"]),
+        chat_is_group=chat.get("type") in GROUP_CHAT_TYPES,
+        message_id=int(message.get("message_id") or 0),
+        data=str(callback.get("data") or ""),
+    )
 
 
 def _parse_delete_command(message: dict[str, Any]) -> "DeleteCommand | None":
