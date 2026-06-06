@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from analyzers.image.factory import ImageEstimator
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.calorie_target import calorie_target, goal_summary
+from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.photo import Photo, StoredPhoto
 from presenters.photo_reply import (
     PHOTO_REPLY_PARSE_MODE,
@@ -71,6 +71,11 @@ async def handle_photo(
     # the reply's "Today's total" line so the figure is never derived twice.
     target = calorie_target(profile)
     personal_goal = goal_summary(profile, target)
+    # Protein progress (so far today, before this plate) lets the tip size its
+    # protein advice honestly and the reply show how much of the day's protein
+    # target is met. Both are skipped without a weight on file.
+    protein_target = protein_target_g(profile)
+    protein_so_far = sum(stored.protein_g for stored in prior)
 
     logger.info(
         "photo context msg=%s sender_id=%s has_profile=%s goal=%r tz=%s "
@@ -93,6 +98,8 @@ async def handle_photo(
             prior_meals=prior_meals,
             personal_context=personal_context,
             personal_goal=personal_goal,
+            protein_so_far_g=protein_so_far,
+            protein_target_g=protein_target,
         )
     except Exception as error:
         logger.exception(
@@ -127,6 +134,8 @@ async def handle_photo(
         streak_line=streak_line,
         eaten_at=eaten_at_label,
         calorie_target=target,
+        protein_today_g=protein_so_far + max(0, analysis.protein_g),
+        protein_target_g=protein_target,
     )
     await _safely_reply(telegram, photo, reply, daily_total)
     return analysis

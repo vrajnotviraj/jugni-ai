@@ -117,6 +117,9 @@ class UserDaySummary:
     rank: int
     meal_periods_covered: int = 0
     calorie_target: int | None = None
+    # Daily protein target in grams (see domain.calorie_target.protein_target_g),
+    # or None when the person has no weight on file. Display-only.
+    protein_target_g: int | None = None
     macros: DayMacros = field(default_factory=DayMacros)
     # Label of the macro to emphasise for this person's goal (see
     # domain.calorie_target.highlight_macro), or None when none stands out.
@@ -143,15 +146,17 @@ class DayReport:
         calorie_targets: list[int | None] | None = None,
         highlight_macros: list[str | None] | None = None,
         streaks: list[int] | None = None,
+        protein_targets: list[int | None] | None = None,
     ) -> "DayReport":
         # Build per-user summaries, carrying meal-period coverage alongside each
         # for a hard two-tier ranking.
         targets = calorie_targets or [None] * len(users)
         highlights = highlight_macros or [None] * len(users)
         streak_lengths = streaks or [0] * len(users)
+        protein = protein_targets or [None] * len(users)
         summaries: list[UserDaySummary] = []
-        for user, note, target, highlight, streak in zip(
-            users, notes, targets, highlights, streak_lengths, strict=True
+        for user, note, target, highlight, streak, protein_target in zip(
+            users, notes, targets, highlights, streak_lengths, protein, strict=True
         ):
             dishes = tuple(meal.dish for meal in user.meals if meal.dish)
             timeline = tuple(
@@ -174,6 +179,7 @@ class DayReport:
                     rank=0,
                     meal_periods_covered=meal_periods_covered(user.meals),
                     calorie_target=target,
+                    protein_target_g=protein_target,
                     macros=user.macros,
                     highlight_macro=highlight,
                     streak=streak,
@@ -206,6 +212,7 @@ class DayReport:
                 rank=index,
                 meal_periods_covered=u.meal_periods_covered,
                 calorie_target=u.calorie_target,
+                protein_target_g=u.protein_target_g,
                 macros=u.macros,
                 highlight_macro=u.highlight_macro,
                 streak=u.streak,

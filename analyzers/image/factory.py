@@ -26,6 +26,8 @@ def build_image_estimator(
         prior_meals: str | None = None,
         personal_context: str | None = None,
         personal_goal: str | None = None,
+        protein_so_far_g: int | None = None,
+        protein_target_g: int | None = None,
     ) -> FoodAnalysis:
         return await analyse_image(
             openai_client,
@@ -37,6 +39,8 @@ def build_image_estimator(
             prior_meals=prior_meals,
             personal_context=personal_context,
             personal_goal=personal_goal,
+            protein_so_far_g=protein_so_far_g,
+            protein_target_g=protein_target_g,
         )
 
     return estimator

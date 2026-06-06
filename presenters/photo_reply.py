@@ -4,7 +4,7 @@ from html import escape
 
 from domain.analysis import FoodAnalysis
 from domain.streak import StreakState
-from presenters.macros import macro_shares
+from presenters.macros import macro_shares, protein_progress
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,8 @@ def format_photo_reply(
     streak_line: str | None = None,
     eaten_at: str | None = None,
     calorie_target: int | None = None,
+    protein_today_g: int | None = None,
+    protein_target_g: int | None = None,
 ) -> str:
     if not analysis.is_food:
         return NOT_FOOD_REPLY
@@ -55,6 +57,9 @@ def format_photo_reply(
     if macro_line:
         nutrition.append(macro_line)
     nutrition.append(today_line)
+    protein_line = _protein_progress_line(protein_today_g, protein_target_g)
+    if protein_line:
+        nutrition.append(protein_line)
     nutrition.append(confidence_line)
 
     groups = [identity, nutrition]
@@ -116,6 +121,19 @@ def _confidence_line(confidence: str) -> str:
     icon = _CONFIDENCE_ICONS.get(confidence)
     prefix = f"{icon} " if icon else ""
     return f"{prefix}Confidence: {confidence}"
+
+
+def _protein_progress_line(today_g: int | None, target_g: int | None) -> str | None:
+    """How much of the day's protein target is met, e.g. "🟠 Protein today:
+    58g (48%)". Mirrors the calorie line's design: the coloured-circle gauge
+    encodes progress against the personal target and the explicit "/ target g"
+    figure is dropped to keep the reply uncluttered.
+    """
+    gauge = protein_progress(today_g or 0, target_g)
+    if not gauge:
+        return None
+    icon, pct = gauge
+    return f"{icon} Protein today: {today_g}g ({pct}%)"
 
 
 def _macro_line(analysis: FoodAnalysis) -> str | None:

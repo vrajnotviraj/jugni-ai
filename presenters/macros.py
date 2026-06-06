@@ -33,6 +33,31 @@ def macro_shares(
     return [(label, icon, pct) for (label, _, icon), pct in ranked]
 
 
+# Protein-target gauge tiers, mirroring the calorie target's coloured-circle
+# fill gauge. Unlike calories, filling toward the protein target is GOOD, so
+# the scale runs red → green as the day fills up.
+_PROTEIN_TIERS = (
+    (0.4, "🔴"),
+    (0.7, "🟠"),
+    (1.0, "🟡"),
+)
+_PROTEIN_MET_ICON = "🟢"
+
+
+def protein_progress(today_g: int, target_g: int | None) -> tuple[str, int] | None:
+    """``(gauge icon, percent of the daily protein target met)``, or ``None``
+    when there is no target (no weight on file) or no logged protein (legacy
+    meals without macro data) — callers omit the gauge rather than show zeros.
+    """
+    if not target_g or today_g <= 0:
+        return None
+    fraction = today_g / target_g
+    for threshold, icon in _PROTEIN_TIERS:
+        if fraction < threshold:
+            return icon, round(fraction * 100)
+    return _PROTEIN_MET_ICON, round(fraction * 100)
+
+
 def _to_percent(values: list[int]) -> list[int]:
     """Whole-number percentages that always sum to 100 (largest-remainder)."""
     total = sum(values)

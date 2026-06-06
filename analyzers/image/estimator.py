@@ -23,6 +23,8 @@ async def analyse_image(
     prior_meals: str | None = None,
     personal_context: str | None = None,
     personal_goal: str | None = None,
+    protein_so_far_g: int | None = None,
+    protein_target_g: int | None = None,
 ) -> FoodAnalysis:
     # Cap the longest side so the patch-based vision model bills fewer image
     # tokens; this is the single boundary before OpenAI, so every caller (bot,
@@ -39,6 +41,8 @@ async def analyse_image(
             prior_meals=prior_meals,
             personal_context=personal_context,
             personal_goal=personal_goal,
+            protein_so_far_g=protein_so_far_g,
+            protein_target_g=protein_target_g,
         ),
         image_data_url=_image_data_url(image_bytes, media_type),
         tools=[{"type": "web_search"}],

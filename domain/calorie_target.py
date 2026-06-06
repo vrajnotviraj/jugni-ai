@@ -27,6 +27,13 @@ _GAIN_WORDS = (
 )
 _LOSS_WORDS = ("lose", "loss", "cut", "shed", "reduce", "slim", "deficit", "drop")
 
+# Daily protein in g per kg body weight, by goal direction. ~1.6 g/kg is the
+# evidence-backed breakpoint for muscle gain (Morton et al. meta-analysis) and
+# the top of the 1.2-1.6 g/kg range that preserves lean mass in a deficit, so
+# both directed goals share it. Maintenance gets 1.0 g/kg — above the 0.8-0.83
+# g/kg RDA floor and realistic for a largely vegetarian diet.
+_PROTEIN_G_PER_KG = {"gain": 1.6, "loss": 1.6, "maintain": 1.0}
+
 
 def calorie_target(profile: UserProfile | None) -> int | None:
     """A realistic daily calorie target from the profile, or None to fall back.
@@ -49,6 +56,19 @@ def calorie_target(profile: UserProfile | None) -> int | None:
     else:
         target = maintenance
     return max(_MIN_TARGET_KCAL, round(target))
+
+
+def protein_target_g(profile: UserProfile | None) -> int | None:
+    """A realistic daily protein target in grams, or None to fall back.
+
+    Weight is the one required anchor, mirroring ``calorie_target``: without it
+    (or a profile) callers keep their protein-agnostic behavior. The figure is
+    rounded to the nearest 5 g — it is a day-level aim, not a prescription.
+    """
+    if profile is None or profile.weight_kg is None:
+        return None
+    per_kg = _PROTEIN_G_PER_KG[_goal_direction(profile.goal)]
+    return max(5, round(profile.weight_kg * per_kg / 5) * 5)
 
 
 def _bmr(profile: UserProfile) -> float:
