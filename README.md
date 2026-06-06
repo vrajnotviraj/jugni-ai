@@ -68,7 +68,7 @@ Streaks shipped first (see [Streaks](#streaks)): the bot now knows when you post
 
 Weekly analysis comes after that. The bot can spot patterns a single day misses: low protein breakfasts, late dinners, too many liquid calories, or the famous "healthy Monday, chaos by Thursday" graph.
 
-Then daily recommendations. Once the bot has your past meals, goals, and weight history, it can suggest today's meals from your history and goals.
+Meal recommendations shipped too (see [Meal recommendations](#meal-recommendations-recommend)): `/recommend` suggests your next meal from your past meals, today's gaps, and your goal.
 
 There should also be a preference page.
 
@@ -84,8 +84,8 @@ command menu
 | Command          | What it does                                                                                       | Example                                              |
 | ---------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `/profile`       | View your profile, or set it in plain words (an LLM extracts height, weight, age, sex, activity, goal, diet, timezone) | `/profile 5ft9, 72 kg, 31M, gym 4x a week, vegetarian, want to lose fat` |
-| `/addcontext`    | Add a standing note respected in every future photo estimate (an LLM folds it into your notes, keeping them concise and deduped) | `/addcontext my chundo has no sugar`                 |
-| `/seecontext`    | List your saved context notes                                                                      | `/seecontext`                                        |
+| `/context`       | Bare: list your saved context notes. With text: an LLM folds it into your notes (add, change, or remove), keeping them concise and deduped | `/context my chundo has no sugar`                    |
+| `/recommend`     | Suggest your next meal from your day, history, and goal (see [Meal recommendations](#meal-recommendations-recommend)) | `/recommend light dinner`                            |
 | `/deleteprofile` | Delete your profile, context, and weight history                                                   | `/deleteprofile`                                     |
 
 Notes:
@@ -95,7 +95,7 @@ Notes:
 - **Dietary preferences.** Tell the bot how you eat and it keeps every tip and
   daily note inside those limits, never suggesting a food you avoid. Set it on
   your profile (`/profile vegetarian, no eggs`) or as a standing note
-  (`/addcontext no eggs`). A vegetarian gets nudged toward paneer, tofu, or
+  (`/context no eggs`). A vegetarian gets nudged toward paneer, tofu, or
   sprouts for protein, never eggs, chicken, or fish.
 - **Weight history.** Every weight you enter stamps your latest reading and is
   also appended to an append-only history, kept for future trend analysis.
@@ -108,6 +108,38 @@ Notes:
   daily summary's "is your day over?" judgment use your own clock.
   Day bucketing for the group leaderboard stays on the app timezone. Unset means
   the app timezone is used, so nothing changes for you until you set it
+
+## Meal recommendations (/recommend)
+
+Ask "what should I eat next?" in your DM or in the group:
+
+| Variant                     | What happens                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `/recommend`                | Four buttons (breakfast / lunch / dinner / snack); tap one to get options    |
+| `/recommend dinner`         | Options for that meal straight away                                           |
+| `/recommend high protein`   | Modifier steers the options; works combined: `/recommend light dinner`       |
+| `/recommend snack` at 23:00 | An explicit ask is honoured at any hour with something sensible and light    |
+
+Each reply gives 2-4 realistic options with a rough calorie range, the plate's
+macro shape in words, and why it fits today.
+
+What it uses: your goal and dietary limits (profile + context notes), today's
+logged meals and their macro gaps, and your last ~10 days of meals for cuisine
+and familiarity. All numbers are precomputed by the bot; the LLM only chooses
+and explains. No history yet? It says so and goes by your goal alone.
+
+Notes:
+
+- **Group privacy.** A recommendation asked in the group never contains your
+  weight, height, age, sex, calorie/protein targets, or remaining-budget
+  numbers, and never mentions health conditions from your notes. Those values
+  are stripped before the prompt is built, not merely instructed away.
+- **Buttons are personal.** Only the person who sent `/recommend` can tap their
+  buttons; anyone else gets a polite "not for you".
+- **Cost cap.** Each recommendation counts against the same daily AI-reply
+  limit as other LLM commands. The button prompt itself is free.
+- **Limits.** Calorie figures are honest ranges, not measurements. Suggestions
+  are ideas from your own eating patterns, not medical or dietetic advice.
 
 ## Setup
 
@@ -254,8 +286,13 @@ Point Telegram at your deployed URL:
 ```bash
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "url=https://your-domain.com/api/telegram/webhook" \
-  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
+  -d 'allowed_updates=["message","callback_query"]'
 ```
+
+`allowed_updates` must list both kinds: without `callback_query` the
+`/recommend` buttons spin forever, and an explicit list without `message`
+silently breaks photo handling. (Polling mode sets the same list itself.)
 
 For local testing, you can use polling:
 
@@ -269,15 +306,15 @@ Use webhook mode in production.
 
 ```text
 api/                 FastAPI routes and app wiring
-controllers/         top-level bot flows
-domain/              typed dataclasses
-image_analyser/      food photo prompt, parser, estimator
-summary_analyser/    daily ranking prompt, parser, summarizer
+workflows/           top-level bot flows (dispatch, photo, recommend, reports)
+domain/              typed dataclasses and pure rules (scoring, targets, gaps)
+analyzers/           LLM calls: image, summary, profile, context, recommend
 presenters/          Telegram message formatting
-storage/             Redis repository
-telegram/            Telegram API wrapper and update parsing
-users/               per-user daily breakdown
+storage/             Redis repositories (photos, profiles)
+telegram/            Telegram API wrapper, update parsing, polling
+llm/                 OpenAI client plumbing and JSON parsing
 core/                settings, dates, logging
+evals/               end-to-end eval cases and LLM-as-judge runner
 ```
 
 The code is intentionally small. Most files do 1 thing and hand off typed objects instead of loose dicts.
