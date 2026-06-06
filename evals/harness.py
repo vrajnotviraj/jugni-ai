@@ -21,6 +21,7 @@ from redis.asyncio import Redis
 from analyzers.context.rewriter import build_context_rewriter
 from analyzers.image.factory import build_image_estimator
 from analyzers.profile.extractor import build_profile_extractor
+from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
 from api.routes.meals import delete_meal as delete_meal_route
 from api.routes.meals import list_all_meals
@@ -34,7 +35,7 @@ from domain.streak import AtRiskUser
 from presenters.streak_nudge import STREAK_NUDGE_PARSE_MODE, format_streak_nudge
 from storage.redis_photo_repository import RedisPhotoRepository
 from storage.redis_profile_repository import RedisProfileRepository
-from workflows.dispatch_update import Dependencies
+from workflows.dispatch_update import Dependencies, dispatch_update
 from workflows.streak_nudge import build_streak_nudge
 
 EVAL_CHAT_ID = -9_990_000_001
@@ -52,9 +53,19 @@ class _Telegram:
 
     def __init__(self) -> None:
         self.sent: list[str] = []
+        # (callback_query_id, text, show_alert) per answered button press.
+        self.answered: list[tuple[str, str | None, bool]] = []
 
     async def send_message(self, chat_id: int, text: str, **_: object) -> None:
         self.sent.append(text)
+
+    async def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> None:
+        self.answered.append((callback_query_id, text, show_alert))
 
     async def send_document(self, *_: object, **__: object) -> None:
         pass
@@ -115,10 +126,19 @@ class World:
         result["reply_text"] = self.tg.sent[-1] if len(self.tg.sent) > before else ""
         return result
 
-    async def seed_meal(self, *, label: str, user_id: int, when: datetime) -> None:
-        """Store a prior-day meal directly (no vision call) so a user reads as
-        having logged on ``when``'s local day — the basis for multi-day streaks."""
-        message_id = -(user_id * 100_000 + when.date().toordinal())
+    async def seed_meal(
+        self,
+        *,
+        label: str,
+        user_id: int,
+        when: datetime,
+        analysis: FoodAnalysis | None = None,
+    ) -> None:
+        """Store a meal directly (no vision call) so a user reads as having
+        logged on ``when``'s local day. Pass ``analysis`` to seed real dishes
+        and macros (recommend cases); the default minimal seed only marks
+        day-presence (streak cases). The hour keeps same-day seeds distinct."""
+        message_id = -(user_id * 10_000_000 + when.date().toordinal() * 100 + when.hour)
         photo = Photo(
             update_id=0,
             chat_id=self.chat_id,
@@ -131,7 +151,67 @@ class World:
             caption=None,
         )
         if await self.photo_repo.reserve(photo):
-            await self.photo_repo.complete(photo, _SEED_ANALYSIS)
+            await self.photo_repo.complete(photo, analysis or _SEED_ANALYSIS)
+
+    async def recommend(
+        self,
+        *,
+        user_id: int,
+        text: str = "",
+        username: str | None = None,
+        group: bool = False,
+    ) -> str:
+        """Send a real /recommend update through dispatch; returns the reply.
+
+        ``username`` must match the label meals were seeded under (minus the
+        "@") or the history join silently tests the empty-history path."""
+        before = len(self.tg.sent)
+        chat = (
+            {"id": self.chat_id, "type": "supergroup"}
+            if group
+            else {"id": user_id, "type": "private"}
+        )
+        update = {
+            "update_id": 0,
+            "message": {
+                "chat": chat,
+                "from": {"id": user_id, "username": username, "first_name": "Eval"},
+                "text": f"/recommend {text}".strip(),
+            },
+        }
+        await dispatch_update(update, deps=self.deps)
+        return "\n".join(self.tg.sent[before:])
+
+    async def simulate_callback(
+        self,
+        *,
+        user_id: int,
+        data: str,
+        username: str | None = None,
+        group: bool = True,
+        message_id: int = 1,
+    ) -> tuple[str, list[tuple[str, str | None, bool]]]:
+        """Press an inline button; returns (replies sent, presses answered)."""
+        before_sent, before_answered = len(self.tg.sent), len(self.tg.answered)
+        chat = (
+            {"id": self.chat_id, "type": "supergroup"}
+            if group
+            else {"id": user_id, "type": "private"}
+        )
+        update = {
+            "update_id": 0,
+            "callback_query": {
+                "id": "eval-press",
+                "from": {"id": user_id, "username": username, "first_name": "Eval"},
+                "message": {"message_id": message_id, "chat": chat},
+                "data": data,
+            },
+        }
+        await dispatch_update(update, deps=self.deps)
+        return (
+            "\n".join(self.tg.sent[before_sent:]),
+            self.tg.answered[before_answered:],
+        )
 
     async def nudge(self) -> tuple[list[AtRiskUser], str]:
         """Run the evening at-risk check and send the one consolidated message
@@ -228,9 +308,12 @@ async def build_world() -> World:
         day_summarizer=day_summarizer,
         profile_extractor=build_profile_extractor(s, openai),
         context_rewriter=build_context_rewriter(s, openai),
+        recommender=build_recommender(s, openai),
         telegram=tg,
         timezone=s.timezone,
-        allowed_chat_ids=s.telegram_group_chat_ids,
+        # The eval chat is the one allowed group, so group-surface dispatch
+        # passes the allowlist and DM /recommend bridges history to it.
+        allowed_chat_ids=(EVAL_CHAT_ID,),
     )
     return World(
         settings=s,
