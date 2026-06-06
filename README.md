@@ -115,7 +115,7 @@ Ask "what should I eat next?" in your DM or in the group:
 
 | Variant                     | What happens                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------- |
-| `/recommend`                | Four buttons (breakfast / lunch / dinner / snack); tap one to get options    |
+| `/recommend`                | Four keyboard buttons (breakfast / lunch / dinner / snack); a tap sends that command for you |
 | `/recommend dinner`         | Options for that meal straight away                                           |
 | `/recommend high protein`   | Modifier steers the options; works combined: `/recommend light dinner`       |
 | `/recommend snack` at 23:00 | An explicit ask is honoured at any hour with something sensible and light    |
@@ -134,8 +134,10 @@ Notes:
   weight, height, age, sex, calorie/protein targets, or remaining-budget
   numbers, and never mentions health conditions from your notes. Those values
   are stripped before the prompt is built, not merely instructed away.
-- **Buttons are personal.** Only the person who sent `/recommend` can tap their
-  buttons; anyone else gets a polite "not for you".
+- **Buttons are plain commands.** A tap just sends `/recommend <meal>` as your
+  own message, so whoever taps gets their own recommendation, charged to their
+  own daily limit. In groups the keyboard is shown only to the requester and
+  hides after one tap.
 - **Cost cap.** Each recommendation counts against the same daily AI-reply
   limit as other LLM commands. The button prompt itself is free.
 - **Limits.** Calorie figures are honest ranges, not measurements. Suggestions
@@ -183,18 +185,13 @@ ADMIN_API_SECRET=another-long-secret
 
 `ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, `/api/profiles`, and `/api/telegram/simulate`. When it is set, send it as `X-Admin-API-Secret`.
 
-`POST /api/telegram/simulate` runs a synthetic DM or group message — or an inline-button press — through the real dispatch path and returns what the bot would have sent (no Telegram client needed):
+`POST /api/telegram/simulate` runs a synthetic DM or group message through the real dispatch path and returns what the bot would have sent (no Telegram client needed):
 
 ```bash
 # a group /recommend
 curl -X POST http://localhost:8000/api/telegram/simulate \
   -H 'Content-Type: application/json' \
   -d '{"user_id": 123, "surface": "group", "text": "/recommend dinner", "username": "raj"}'
-
-# press a keyboard button it returned
-curl -X POST http://localhost:8000/api/telegram/simulate \
-  -H 'Content-Type: application/json' \
-  -d '{"user_id": 123, "callback_data": "rec:123:dinner"}'
 ```
 
 Keep `.env` private. Commit `.env.example`.
@@ -300,13 +297,8 @@ Point Telegram at your deployed URL:
 ```bash
 curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "url=https://your-domain.com/api/telegram/webhook" \
-  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message","callback_query"]'
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
 ```
-
-`allowed_updates` must list both kinds: without `callback_query` the
-`/recommend` buttons spin forever, and an explicit list without `message`
-silently breaks photo handling. (Polling mode sets the same list itself.)
 
 For local testing, you can use polling:
 

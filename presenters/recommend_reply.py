@@ -8,21 +8,18 @@ RECOMMEND_REPLY_PARSE_MODE = "HTML"
 PICK_SLOT_TEXT = "What should I suggest? Pick a meal:"
 
 # Telegram menu taps send /recommend with no arguments, so the slot is chosen
-# via these buttons. The callback grammar is rec:<requester_id>:<slot>; the
-# requester id is frozen into each button so only they can press it (R3).
+# via a reply keyboard: tapping a button sends its text as a normal message
+# from the user, which flows through the ordinary command path — no callback
+# handling, no new update types. ``selective`` scopes it to the requester when
+# the prompt replies to their command; ``one_time_keyboard`` hides it after use.
 _SLOT_ROWS = (("breakfast", "lunch"), ("dinner", "snack"))
 
-
-def slot_keyboard(requester_id: int) -> dict:
-    return {
-        "inline_keyboard": [
-            [
-                {"text": slot.title(), "callback_data": f"rec:{requester_id}:{slot}"}
-                for slot in row
-            ]
-            for row in _SLOT_ROWS
-        ]
-    }
+SLOT_KEYBOARD = {
+    "keyboard": [[f"/recommend {slot}" for slot in row] for row in _SLOT_ROWS],
+    "one_time_keyboard": True,
+    "resize_keyboard": True,
+    "selective": True,
+}
 
 
 def format_recommendation(

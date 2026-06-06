@@ -53,19 +53,19 @@ class _Telegram:
 
     def __init__(self) -> None:
         self.sent: list[str] = []
-        # (callback_query_id, text, show_alert) per answered button press.
-        self.answered: list[tuple[str, str | None, bool]] = []
+        # The reply_markup of each sent message (None for plain messages), so
+        # cases can assert on the /recommend slot keyboard.
+        self.markups: list[dict | None] = []
 
-    async def send_message(self, chat_id: int, text: str, **_: object) -> None:
-        self.sent.append(text)
-
-    async def answer_callback_query(
+    async def send_message(
         self,
-        callback_query_id: str,
-        text: str | None = None,
-        show_alert: bool = False,
+        chat_id: int,
+        text: str,
+        reply_markup: dict | None = None,
+        **_: object,
     ) -> None:
-        self.answered.append((callback_query_id, text, show_alert))
+        self.sent.append(text)
+        self.markups.append(reply_markup)
 
     async def send_document(self, *_: object, **__: object) -> None:
         pass
@@ -181,37 +181,6 @@ class World:
         }
         await dispatch_update(update, deps=self.deps)
         return "\n".join(self.tg.sent[before:])
-
-    async def simulate_callback(
-        self,
-        *,
-        user_id: int,
-        data: str,
-        username: str | None = None,
-        group: bool = True,
-        message_id: int = 1,
-    ) -> tuple[str, list[tuple[str, str | None, bool]]]:
-        """Press an inline button; returns (replies sent, presses answered)."""
-        before_sent, before_answered = len(self.tg.sent), len(self.tg.answered)
-        chat = (
-            {"id": self.chat_id, "type": "supergroup"}
-            if group
-            else {"id": user_id, "type": "private"}
-        )
-        update = {
-            "update_id": 0,
-            "callback_query": {
-                "id": "eval-press",
-                "from": {"id": user_id, "username": username, "first_name": "Eval"},
-                "message": {"message_id": message_id, "chat": chat},
-                "data": data,
-            },
-        }
-        await dispatch_update(update, deps=self.deps)
-        return (
-            "\n".join(self.tg.sent[before_sent:]),
-            self.tg.answered[before_answered:],
-        )
 
     async def nudge(self) -> tuple[list[AtRiskUser], str]:
         """Run the evening at-risk check and send the one consolidated message

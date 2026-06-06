@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any
 
@@ -21,15 +20,10 @@ class TelegramBotApi:
         self,
         offset: int | None = None,
         timeout: int = 30,
-        allowed_updates: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, object] = {"timeout": timeout}
         if offset is not None:
             params["offset"] = offset
-        if allowed_updates is not None:
-            # Telegram omits callback_query updates unless asked for explicitly.
-            # The list MUST include "message" too or photo handling breaks.
-            params["allowed_updates"] = json.dumps(allowed_updates)
 
         async with httpx.AsyncClient(timeout=timeout + 10) as client:
             response = await client.get(f"{self._base_url}/getUpdates", params=params)
@@ -91,29 +85,6 @@ class TelegramBotApi:
             }
 
         await self._call("sendMessage", payload)
-
-    async def answer_callback_query(
-        self,
-        callback_query_id: str,
-        text: str | None = None,
-        show_alert: bool = False,
-    ) -> None:
-        # Telegram requires every callback press to be answered, or the client
-        # shows a spinner forever. With no text this is a bare acknowledgement.
-        if self._dry_run:
-            print(
-                f"\n[DRY-RUN telegram] answerCallbackQuery id={callback_query_id} "
-                f"alert={show_alert} text={text!r}\n"
-            )
-            logger.info("dry-run answer callback id=%s", callback_query_id)
-            return
-
-        payload: dict[str, object] = {"callback_query_id": callback_query_id}
-        if text:
-            payload["text"] = text
-        if show_alert:
-            payload["show_alert"] = True
-        await self._call("answerCallbackQuery", payload)
 
     async def send_document(
         self,

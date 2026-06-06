@@ -25,18 +25,14 @@ async def telegram_webhook(
 ) -> dict[str, bool]:
     verify_webhook_secret(settings, secret)
     update = await request.json()
-    # A callback press has no top-level message; log its host message instead.
-    callback = update.get("callback_query") or {}
-    message = update.get("message") or callback.get("message") or {}
+    message = update.get("message") or {}
     chat = message.get("chat") or {}
     logger.info(
-        "webhook received update_id=%s chat_type=%s chat_id=%s has_photo=%s "
-        "is_callback=%s text=%r",
+        "webhook received update_id=%s chat_type=%s chat_id=%s has_photo=%s text=%r",
         update.get("update_id"),
         chat.get("type"),
         chat.get("id"),
         bool(message.get("photo")),
-        bool(callback),
         (message.get("text") or "")[:80],
     )
     await dispatch_update(update, deps=deps)

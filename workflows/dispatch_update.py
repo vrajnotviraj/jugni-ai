@@ -8,11 +8,11 @@ from analyzers.image.factory import ImageEstimator
 from analyzers.profile.extractor import ProfileExtractor
 from analyzers.recommend.recommender import Recommender
 from analyzers.summary.factory import DaySummarizer
+from core.dates import today_day_key
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import (
-    CallbackPressed,
     DeleteCommand,
     DeleteProfileCommand,
     EditContextCommand,
@@ -28,6 +28,7 @@ from telegram.updates import (
 )
 from workflows.build_day_report import build_day_report
 from workflows.delete_meal import run_meal_deletion
+from workflows.dm_reply import send_dm
 from workflows.handle_context_command import handle_edit_context, handle_view_context
 from workflows.handle_photo import handle_photo
 from workflows.handle_profile_command import (
@@ -35,18 +36,24 @@ from workflows.handle_profile_command import (
     handle_help,
     handle_profile_command,
 )
-from workflows.handle_recommend import (
-    handle_recommend_callback,
-    handle_recommend_command,
-)
-from workflows.llm_cap import allow_llm_command
+from workflows.handle_recommend import handle_recommend_command
 from workflows.send_day_report import send_day_report
 
 logger = logging.getLogger(__name__)
 
+# Launch-time abuse/cost stop-gap: each user gets this many LLM-backed
+# commands (/profile with text, /context with text, /recommend with text) per
+# day. Read-only commands and the bare /recommend keyboard are free.
+DAILY_LLM_LIMIT = 25
+
+_LIMIT_REPLY = (
+    "You have hit today's limit for AI replies. Try again tomorrow. "
+    "Your profile and notes are saved and still work on every photo."
+)
+
 # Parsed types that originate in a group chat and stay behind the group allowlist.
-# RecommendCommand and CallbackPressed exist on both surfaces, so their gating
-# is decided per-instance in _is_group_surface, not by type membership here.
+# RecommendCommand exists on both surfaces, so its gating is decided
+# per-instance in _is_group_surface, not by type membership here.
 _GROUP_TYPES = (PhotoMessage, SummaryCommand, DeleteCommand)
 
 
@@ -150,8 +157,8 @@ async def _dispatch_group(
             )
             await send_day_report(telegram=deps.telegram, report=report)
 
-        case RecommendCommand() | CallbackPressed():
-            await _dispatch_recommend(parsed, deps=deps)
+        case RecommendCommand() as command:
+            await _dispatch_recommend(command, deps=deps)
 
 
 async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None:
@@ -193,18 +200,23 @@ async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None
         case HelpCommand() as command:
             await handle_help(command, telegram=deps.telegram)
 
-        case RecommendCommand() | CallbackPressed():
-            await _dispatch_recommend(parsed, deps=deps)
+        case RecommendCommand() as command:
+            await _dispatch_recommend(command, deps=deps)
 
 
-async def _dispatch_recommend(parsed: ParsedUpdate, *, deps: Dependencies) -> None:
-    """Route /recommend traffic; both surfaces share these two arms.
+async def _dispatch_recommend(
+    command: RecommendCommand, *, deps: Dependencies
+) -> None:
+    """Route /recommend; both surfaces share this arm.
 
     A one-step command (text present) is charged here, before any LLM work;
-    a bare command only sends the free slot keyboard. Presses charge inside
-    the handler, after the requester gate (no LLM call for a stranger's tap).
-    """
-    handler_deps = dict(
+    a bare command only sends the free slot keyboard."""
+    if command.text and not await _allow_llm_command(
+        deps, command.user_id, command.chat_id
+    ):
+        return
+    await handle_recommend_command(
+        command,
         repo=deps.repo,
         profile_repo=deps.profile_repo,
         recommender=deps.recommender,
@@ -212,16 +224,6 @@ async def _dispatch_recommend(parsed: ParsedUpdate, *, deps: Dependencies) -> No
         timezone=deps.timezone,
         allowed_chat_ids=deps.allowed_chat_ids,
     )
-    match parsed:
-        case RecommendCommand() as command:
-            if command.text and not await _allow_llm_command(
-                deps, command.user_id, command.chat_id
-            ):
-                return
-            await handle_recommend_command(command, **handler_deps)
-
-        case CallbackPressed() as pressed:
-            await handle_recommend_callback(pressed, **handler_deps)
 
 
 def _is_group_surface(parsed: ParsedUpdate) -> bool:
@@ -229,8 +231,6 @@ def _is_group_surface(parsed: ParsedUpdate) -> bool:
     match parsed:
         case RecommendCommand(surface=surface):
             return surface == "group"
-        case CallbackPressed(chat_is_group=chat_is_group):
-            return chat_is_group
         case _:
             return isinstance(parsed, _GROUP_TYPES)
 
@@ -240,13 +240,21 @@ async def _allow_llm_command(
     user_id: int,
     chat_id: int,
 ) -> bool:
-    return await allow_llm_command(
-        profile_repo=deps.profile_repo,
-        telegram=deps.telegram,
-        timezone=deps.timezone,
-        user_id=user_id,
-        chat_id=chat_id,
+    """Count one LLM-backed command against the daily cap; reply and bail if over."""
+    day_key = today_day_key(deps.timezone)
+    count = await deps.profile_repo.bump_daily_llm_count(user_id, day_key)
+    logger.info(
+        "llm rate-cap user=%s day=%s count=%s/%s",
+        user_id,
+        day_key,
+        count,
+        DAILY_LLM_LIMIT,
     )
+    if count > DAILY_LLM_LIMIT:
+        logger.info("llm rate-cap hit user=%s, replying with limit notice", user_id)
+        await send_dm(deps.telegram, chat_id, _LIMIT_REPLY)
+        return False
+    return True
 
 
 def _command_text(parsed: ParsedUpdate) -> str:
@@ -275,7 +283,6 @@ def _chat_id_of(parsed: ParsedUpdate) -> int | None:
             | DeleteProfileCommand(chat_id=chat_id)
             | HelpCommand(chat_id=chat_id)
             | RecommendCommand(chat_id=chat_id)
-            | CallbackPressed(chat_id=chat_id)
         ):
             return chat_id
         case Ignore():

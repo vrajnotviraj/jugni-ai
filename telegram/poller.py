@@ -9,11 +9,6 @@ logger = logging.getLogger(__name__)
 
 UpdateHandler = Callable[[dict[str, Any]], Awaitable[None]]
 
-# An explicit list REPLACES Telegram's default (which omits callback_query):
-# "message" must stay in it or photo and command handling silently breaks.
-# Webhook deployments must set the same allowed_updates on setWebhook.
-ALLOWED_UPDATES = ["message", "callback_query"]
-
 
 async def poll_telegram_forever(
     telegram: TelegramBotApi,
@@ -25,9 +20,7 @@ async def poll_telegram_forever(
 
     while True:
         try:
-            updates = await telegram.get_updates(
-                offset=offset, timeout=30, allowed_updates=ALLOWED_UPDATES
-            )
+            updates = await telegram.get_updates(offset=offset, timeout=30)
             for update in updates:
                 offset = int(update["update_id"]) + 1
                 try:

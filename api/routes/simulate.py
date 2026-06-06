@@ -1,11 +1,11 @@
 """Admin-only endpoint for simulating Telegram traffic on either surface.
 
-POST /api/telegram/simulate runs a synthetic DM or group message — or an
-inline-button press — through the real dispatch path (parse, allowlist, rate
-cap, workflow, presenter) against a capturing Telegram, so the response
-carries exactly what the bot would have sent. This is how to exercise
-/recommend (including its keyboard) without a Telegram client; the existing
-/api/profiles/simulate stays as the DM-profile shortcut.
+POST /api/telegram/simulate runs a synthetic DM or group message through the
+real dispatch path (parse, allowlist, rate cap, workflow, presenter) against
+a capturing Telegram, so the response carries exactly what the bot would have
+sent — including any reply keyboard. This is how to exercise /recommend
+without a Telegram client; the existing /api/profiles/simulate stays as the
+DM-profile shortcut.
 
 Requires X-Admin-API-Secret when ADMIN_API_SECRET is set.
 """
@@ -39,13 +39,6 @@ class SimulateRequest(BaseModel):
     )
     text: str = Field(
         default="", description="Message text, e.g. '/recommend dinner'."
-    )
-    callback_data: str | None = Field(
-        default=None,
-        description=(
-            "Simulate an inline-button press with this callback_data (e.g. "
-            "'rec:<user_id>:dinner') instead of a text message."
-        ),
     )
     chat_id: int | None = Field(
         default=None,
@@ -81,34 +74,22 @@ async def simulate_update(
     if payload.username:
         sender["username"] = payload.username
 
-    if payload.callback_data is not None:
-        update: dict[str, Any] = {
-            "update_id": 0,
-            "callback_query": {
-                "id": "simulated",
-                "from": sender,
-                "message": {"message_id": 0, "chat": chat},
-                "data": payload.callback_data,
-            },
-        }
-    else:
-        update = {
-            "update_id": 0,
-            "message": {
-                "message_id": 0,
-                "date": 0,
-                "chat": chat,
-                "from": sender,
-                "text": payload.text,
-            },
-        }
+    update = {
+        "update_id": 0,
+        "message": {
+            "message_id": 0,
+            "date": 0,
+            "chat": chat,
+            "from": sender,
+            "text": payload.text,
+        },
+    }
 
     logger.info(
-        "admin simulate user=%s surface=%s text=%r callback=%r",
+        "admin simulate user=%s surface=%s text=%r",
         payload.user_id,
         payload.surface,
         payload.text,
-        payload.callback_data,
     )
     capture = _CapturingTelegram()
     await dispatch_update(update, deps=replace(deps, telegram=capture))
@@ -118,17 +99,14 @@ async def simulate_update(
         "user_id": payload.user_id,
         "surface": payload.surface,
         "replies": capture.replies,
-        "callback_answers": capture.callback_answers,
     }
 
 
 class _CapturingTelegram:
-    """Records what the bot would send, including keyboards and press acks,
-    so a /recommend keyboard's callback_data can be read and pressed next."""
+    """Records what the bot would send, including any reply keyboard."""
 
     def __init__(self) -> None:
         self.replies: list[dict[str, Any]] = []
-        self.callback_answers: list[dict[str, Any]] = []
 
     async def send_message(
         self,
@@ -140,11 +118,3 @@ class _CapturingTelegram:
         self.replies.append(
             {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         )
-
-    async def answer_callback_query(
-        self,
-        callback_query_id: str,
-        text: str | None = None,
-        show_alert: bool = False,
-    ) -> None:
-        self.callback_answers.append({"text": text, "show_alert": show_alert})

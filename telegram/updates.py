@@ -68,30 +68,18 @@ class HelpCommand:
 
 # /recommend works on both surfaces; ``surface`` records which one so dispatch
 # can keep the group allowlist gate. ``text`` is the raw argument string; the
-# recommend workflow extracts the slot/modifier keywords itself.
+# recommend workflow extracts the slot/modifier keywords itself. ``message_id``
+# lets the group reply thread back to the command (and scope the slot keyboard
+# to its sender via Telegram's ``selective`` flag).
 @dataclass(frozen=True, slots=True)
 class RecommendCommand:
     user_id: int
     chat_id: int
+    message_id: int
     sender_label: str
     display_name: str
     text: str
     surface: str  # "dm" | "group"
-
-
-# A press on any inline-keyboard button. Feature-agnostic transport type: the
-# raw ``data`` string flows through untouched and the owning workflow parses
-# its own grammar (e.g. the recommend flow's "rec:..."). ``data`` arrives from
-# the client and is treated as attacker-controlled everywhere downstream.
-@dataclass(frozen=True, slots=True)
-class CallbackPressed:
-    callback_query_id: str
-    presser_id: int
-    presser_label: str
-    chat_id: int
-    chat_is_group: bool
-    message_id: int
-    data: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,18 +97,11 @@ ParsedUpdate = (
     | DeleteProfileCommand
     | HelpCommand
     | RecommendCommand
-    | CallbackPressed
     | Ignore
 )
 
 
 def parse_update(update: dict[str, Any]) -> ParsedUpdate:
-    # Callback presses are not message-shaped (no chat.type/date at the top),
-    # so they branch off before any of the message-reading logic below.
-    callback = _parse_callback_query(update)
-    if callback is not None:
-        return callback
-
     message = _message_from_update(update)
     chat_type = message.get("chat", {}).get("type")
     if chat_type in GROUP_CHAT_TYPES:
@@ -215,33 +196,11 @@ def _parse_recommend_command(
     return RecommendCommand(
         user_id=int(user_id),
         chat_id=int(message["chat"]["id"]),
+        message_id=int(message.get("message_id") or 0),
         sender_label=sender_label_from(sender),
         display_name=_display_name(sender),
         text=args,
         surface=surface,
-    )
-
-
-def _parse_callback_query(update: dict[str, Any]) -> "CallbackPressed | None":
-    callback = update.get("callback_query")
-    if not callback:
-        return None
-    # ``message`` is the keyboard's host message; Telegram may omit it for very
-    # old presses, in which case there is nothing useful to act on.
-    message = callback.get("message") or {}
-    presser = callback.get("from") or {}
-    presser_id = presser.get("id")
-    chat = message.get("chat") or {}
-    if presser_id is None or chat.get("id") is None:
-        return None
-    return CallbackPressed(
-        callback_query_id=str(callback.get("id", "")),
-        presser_id=int(presser_id),
-        presser_label=sender_label_from(presser),
-        chat_id=int(chat["id"]),
-        chat_is_group=chat.get("type") in GROUP_CHAT_TYPES,
-        message_id=int(message.get("message_id") or 0),
-        data=str(callback.get("data") or ""),
     )
 
 

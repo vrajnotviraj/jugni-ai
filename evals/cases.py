@@ -41,7 +41,7 @@ REC_EAT_SOMETHING = "The text encourages eating a sensible meal. It never sugges
 REC_GAIN = "The options suit a muscle-gain goal: protein-forward with adequate calories, with no starvation or restriction framing."
 REC_FAMILIAR = "Most suggested options are Indian home food (for example dal, roti, sabzi, khichdi, paneer), matching the person's logged history."
 REC_GLOBAL = "At least one suggested option matches the person's non-Indian logged history (for example pasta or a stir-fry); the options are not exclusively Indian dishes."
-REC_GROUP_PRIVATE = "The text contains no body measurements (weight, height, age, sex), no daily calorie or protein target figures, no remaining-calorie-budget figures, and no mention of any health condition (such as diabetes) or medical reasoning. Percentages and the dishes already eaten today are fine."
+REC_GROUP_PRIVATE = "The text contains no body measurements (weight, height, age, sex), no daily calorie or protein target NUMBERS, no remaining-calorie-budget numbers, and no mention of any health condition (such as diabetes) or medical reasoning. Qualitative gap language ('protein is still low', 'fills the protein gap'), percentages, and the dishes already eaten today are all fine — only explicit numbers and health conditions fail."
 
 # Photos are tagged by filename: s_ = snack, m_ = meal. Times come from these windows.
 SNACK_WINDOWS = [(7, 10), (15, 17)]  # 7-11 AM, 3-6 PM
@@ -181,19 +181,6 @@ class Day:
         if judge and reply:
             self.to_judge.append((f"recommend · {user}", _plain(reply), judge))
         return reply
-
-    async def press(
-        self, user: str, data: str, *, group: bool = True
-    ) -> tuple[str, list]:
-        """Press an inline button as ``user``; returns (reply, answered acks)."""
-        reply, answered = await self._world.simulate_callback(
-            user_id=self._id(user),
-            data=data,
-            username=user.lstrip("@"),
-            group=group,
-        )
-        self._say(f"{user} presses {data!r} (answered: {len(answered)})")
-        return reply, answered
 
     async def delete_one(self, user: str) -> None:
         block = _block(await self._world.meals(), user)
@@ -396,22 +383,16 @@ async def case_rec_group_privacy(day: Day) -> None:
 
 
 async def case_rec_buttons(day: Day) -> None:
-    """A bare group /recommend shows slot buttons only the requester can use (deterministic)."""
+    """A bare /recommend shows the slot keyboard; a tap sends the command and gets options (deterministic)."""
     keyboard_prompt = await day.recommend("@kabir", group=True)
     assert "Pick a meal" in keyboard_prompt, keyboard_prompt
-    kabir_id = day._id("@kabir")
+    markup = day._world.tg.markups[-1]
+    assert markup and ["/recommend dinner", "/recommend snack"] in markup["keyboard"]
+    assert markup["one_time_keyboard"] and markup["selective"]
 
-    # A stranger's press: alert answered, no recommendation, no LLM call.
-    reply, answered = await day.press("@meera", f"rec:{kabir_id}:dinner")
-    assert reply == "" and answered and answered[0][2] is True, (reply, answered)
-
-    # A forged payload naming someone else fails the equality gate the same way.
-    reply, answered = await day.press("@kabir", "rec:424242:dinner")
-    assert reply == "" and answered and answered[0][2] is True, (reply, answered)
-
-    # The requester's own press is acked and answered with a recommendation.
-    reply, answered = await day.press("@kabir", f"rec:{kabir_id}:dinner")
-    assert "What to eat next" in reply and answered, (reply, answered)
+    # Tapping a button sends its text as a normal command from the tapper.
+    reply = await day.recommend("@kabir", "dinner", group=True)
+    assert "What to eat next" in reply, reply
 
 
 async def case_rec_fallback(day: Day) -> None:
