@@ -181,7 +181,21 @@ ADMIN_API_SECRET=another-long-secret
 
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
 
-`ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, and `/api/profiles`. When it is set, send it as `X-Admin-API-Secret`.
+`ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, `/api/profiles`, and `/api/telegram/simulate`. When it is set, send it as `X-Admin-API-Secret`.
+
+`POST /api/telegram/simulate` runs a synthetic DM or group message — or an inline-button press — through the real dispatch path and returns what the bot would have sent (no Telegram client needed):
+
+```bash
+# a group /recommend
+curl -X POST http://localhost:8000/api/telegram/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": 123, "surface": "group", "text": "/recommend dinner", "username": "raj"}'
+
+# press a keyboard button it returned
+curl -X POST http://localhost:8000/api/telegram/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": 123, "callback_data": "rec:123:dinner"}'
+```
 
 Keep `.env` private. Commit `.env.example`.
 
