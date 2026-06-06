@@ -7,6 +7,7 @@ from api.routes import (
     health,
     meals,
     profiles,
+    simulate,
     streak_nudge,
     summary,
     telegram_webhook,
@@ -24,3 +25,4 @@ app.include_router(backfill.router)
 app.include_router(cron.router)
 app.include_router(streak_nudge.router)
 app.include_router(profiles.router)
+app.include_router(simulate.router)

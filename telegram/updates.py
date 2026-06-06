@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from domain.photo import Photo
+from domain.photo import Photo, sender_label_from
 
 GROUP_CHAT_TYPES = {"group", "supergroup"}
 PRIVATE_CHAT_TYPE = "private"
@@ -66,6 +66,22 @@ class HelpCommand:
     display_name: str
 
 
+# /recommend works on both surfaces; ``surface`` records which one so dispatch
+# can keep the group allowlist gate. ``text`` is the raw argument string; the
+# recommend workflow extracts the slot/modifier keywords itself. ``message_id``
+# lets the group reply thread back to the command (and scope the slot keyboard
+# to its sender via Telegram's ``selective`` flag).
+@dataclass(frozen=True, slots=True)
+class RecommendCommand:
+    user_id: int
+    chat_id: int
+    message_id: int
+    sender_label: str
+    display_name: str
+    text: str
+    surface: str  # "dm" | "group"
+
+
 @dataclass(frozen=True, slots=True)
 class Ignore:
     pass
@@ -80,6 +96,7 @@ ParsedUpdate = (
     | ViewContextCommand
     | DeleteProfileCommand
     | HelpCommand
+    | RecommendCommand
     | Ignore
 )
 
@@ -108,6 +125,9 @@ def _parse_group_message(
 ) -> ParsedUpdate:
     if _leading_command(message) == "/summary":
         return SummaryCommand(chat_id=int(message["chat"]["id"]))
+
+    if _leading_command(message) == "/recommend":
+        return _parse_recommend_command(message, surface="group")
 
     delete_command = _parse_delete_command(message)
     if delete_command is not None:
@@ -151,6 +171,8 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
                     text=args,
                 )
             return ViewContextCommand(user_id=user_id, chat_id=chat_id)
+        case "/recommend":
+            return _parse_recommend_command(message, surface="dm")
         case "/deleteprofile":
             return DeleteProfileCommand(user_id=user_id, chat_id=chat_id)
         case "/start" | "/help":
@@ -159,6 +181,27 @@ def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
             )
         case _:
             return Ignore()
+
+
+def _parse_recommend_command(
+    message: dict[str, Any],
+    *,
+    surface: str,
+) -> ParsedUpdate:
+    sender = message.get("from") or {}
+    user_id = sender.get("id")
+    if user_id is None:
+        return Ignore()
+    _, args = _command_and_args(message)
+    return RecommendCommand(
+        user_id=int(user_id),
+        chat_id=int(message["chat"]["id"]),
+        message_id=int(message.get("message_id") or 0),
+        sender_label=sender_label_from(sender),
+        display_name=_display_name(sender),
+        text=args,
+        surface=surface,
+    )
 
 
 def _parse_delete_command(message: dict[str, Any]) -> "DeleteCommand | None":

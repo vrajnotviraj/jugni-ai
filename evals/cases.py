@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from datetime import time as dtime
 from pathlib import Path
 
+from domain.analysis import FoodAnalysis
 from evals.harness import World
 
 PHOTOS = Path(__file__).parent / "photos"
@@ -31,6 +32,16 @@ STREAK_GRACE = "The text tells the user they are on a 4-day streak (it states th
 NO_STREAK = "The text is a normal meal reply and does NOT mention any streak, consecutive-day count, or 'don't break the chain' language."
 SUMMARY_STREAK = "The leaderboard text shows a consecutive-day streak count (a number of days running) for at least one person, alongside their meal stats."
 NUDGE_KIND = "The message asks people to log a meal before the day ends to keep their streak alive, in an encouraging, non-shaming tone (no blame or 'you failed' wording)."
+
+# /recommend rules. Each grades one behaviour of the recommendation reply.
+REC_VEG = "Every suggested meal option is vegetarian and egg-free: no eggs, meat, chicken, or fish appear in any suggested dish."
+REC_PROTEIN = "The text includes a line that references what was actually eaten today (a dish by name or its carb-heavy, low-protein character), most suggested options are protein-forward, no gram numbers are quoted, and every calorie figure is a range rather than one exact number."
+REC_NO_SWEETS = "No suggested option is a dessert, mithai, or sweetened drink, and the text never encourages more sugar. Plain whole fruit does not count as a sweet."
+REC_EAT_SOMETHING = "The text encourages eating a sensible meal. It never suggests skipping a meal, fasting, a detox, or going without food; suggesting lighter dishes or moderate portions within a real meal is fine."
+REC_GAIN = "The options suit a muscle-gain goal: protein-forward with adequate calories, with no starvation or restriction framing."
+REC_FAMILIAR = "Most suggested options are Indian home food (for example dal, roti, sabzi, khichdi, paneer), matching the person's logged history."
+REC_GLOBAL = "At least one suggested option matches the person's non-Indian logged history (for example pasta or a stir-fry); the options are not exclusively Indian dishes."
+REC_GROUP_PRIVATE = "The text contains no body measurements (weight, height, age, sex), no daily calorie or protein target NUMBERS, no remaining-calorie-budget numbers, and no mention of any health condition (such as diabetes) or medical reasoning. Qualitative gap language ('protein is still low', 'fills the protein gap'), percentages, and the dishes already eaten today are all fine — only explicit numbers and health conditions fail."
 
 # Photos are tagged by filename: s_ = snack, m_ = meal. Times come from these windows.
 SNACK_WINDOWS = [(7, 10), (15, 17)]  # 7-11 AM, 3-6 PM
@@ -119,6 +130,58 @@ class Day:
         if judge_reply:
             reply = _plain(result.get("reply_text", ""))
             self.to_judge.append((f"reply · {analysis['dish']}", reply, judge_reply))
+
+    async def seed_dish(
+        self,
+        user: str,
+        dish: str,
+        kcal: int,
+        *,
+        protein: int = 0,
+        carb: int = 0,
+        fibre: int = 0,
+        sugar: int = 0,
+        days_ago: int = 0,
+        at_hour: int = 12,
+    ) -> None:
+        """Store a fully-analysed meal directly (no vision call), so recommend
+        cases can shape a day's macros or a week's cuisine deterministically."""
+        tz = self._world.settings.timezone
+        when = datetime.combine(
+            datetime.now(tz).date() - timedelta(days=days_ago), dtime(at_hour, 0), tz
+        )
+        analysis = FoodAnalysis(
+            dish=dish, calories=kcal, confidence="high", tip="", is_food=True,
+            protein_g=protein, carb_g=carb, fibre_g=fibre, added_sugar_g=sugar,
+        )
+        await self._world.seed_meal(
+            label=user, user_id=self._id(user), when=when, analysis=analysis
+        )
+        ago = "today" if not days_ago else f"{days_ago}d ago"
+        self._say(f"{user} logged {dish} ({kcal} kcal) {ago} at {at_hour}:00")
+
+    async def recommend(
+        self,
+        user: str,
+        text: str = "",
+        *,
+        group: bool = False,
+        judge: str | None = None,
+    ) -> str:
+        reply = await self._world.recommend(
+            user_id=self._id(user),
+            text=text,
+            username=user.lstrip("@"),
+            group=group,
+        )
+        where = " in the group" if group else ""
+        self._say(f"{user} sends /recommend {text}".rstrip() + where)
+        if reply:
+            print("\n" + _plain(reply) + "\n")
+        if judge:
+            # An empty reply is judged too, so a dropped command fails loudly.
+            self.to_judge.append((f"recommend · {user}", _plain(reply), judge))
+        return reply
 
     async def delete_one(self, user: str) -> None:
         block = _block(await self._world.meals(), user)
@@ -252,6 +315,127 @@ async def case_streak_nudge(day: Day) -> None:
     await day.nudge()  # nobody at risk -> no message sent
 
 
+async def case_rec_veg(day: Day) -> None:
+    """A vegetarian no-eggs user asks for dinner; every option must fit the diet."""
+    await day.profile("@aarav", "70 kg, vegetarian, no eggs, want to lose fat")
+    await day.recommend("@aarav", "dinner", judge=REC_VEG)
+
+
+async def case_rec_protein_gap(day: Day) -> None:
+    """A carb-heavy low-protein day steers dinner protein-forward, grounded in the day."""
+    await day.profile("@diya", "62 kg, want to build muscle")
+    await day.seed_dish("@diya", "White rice with aloo sabzi", 600, carb=110, protein=8, at_hour=9)
+    await day.seed_dish("@diya", "Maggi noodles", 400, carb=70, protein=7, at_hour=13)
+    await day.recommend("@diya", "dinner", judge=REC_PROTEIN)
+
+
+async def case_rec_sugar(day: Day) -> None:
+    """A high-added-sugar day gets a snack suggestion with no desserts in it."""
+    await day.seed_dish("@kabir", "Jalebi and sweetened chai", 450, sugar=45, at_hour=10)
+    await day.seed_dish("@kabir", "Frooti and biscuits", 300, sugar=35, at_hour=13)
+    await day.recommend("@kabir", "snack", judge=REC_NO_SWEETS)
+
+
+async def case_rec_low_intake(day: Day) -> None:
+    """A fat-loss user with nothing logged today is told to eat, never to restrict."""
+    await day.profile("@meera", "58 kg, want to lose fat")
+    await day.recommend("@meera", "dinner", judge=REC_EAT_SOMETHING)
+
+
+async def case_rec_gain(day: Day) -> None:
+    """A muscle-gain user gets protein-forward, adequate-calorie lunch options."""
+    await day.profile("@neel", "75 kg, want to build muscle")
+    await day.recommend("@neel", "lunch", judge=REC_GAIN)
+
+
+async def case_rec_history(day: Day) -> None:
+    """A dal-heavy week earns familiar Indian options; a pasta-heavy week keeps global cuisine."""
+    for offset in (1, 2, 3, 4, 5):
+        await day.seed_dish("@aarav", "Dal tadka with roti and sabzi", 500, protein=18, days_ago=offset, at_hour=20)
+    await day.recommend("@aarav", "dinner", judge=REC_FAMILIAR)
+    for offset in (1, 2, 3, 4, 5):
+        await day.seed_dish("@diya", "Penne arrabbiata with vegetables", 550, protein=15, days_ago=offset, at_hour=20)
+    await day.recommend("@diya", "dinner", judge=REC_GLOBAL)
+
+
+async def case_rec_group_privacy(day: Day) -> None:
+    """A group recommendation never leaks body stats, targets, or a health condition."""
+    from workflows.build_recommendation_context import build_recommendation_context
+
+    await day.profile("@aarav", "5ft9, 72 kg, 34 years old, male, want to lose fat")
+    await day.context("@aarav", "I am diabetic")
+    await day.seed_dish("@aarav", "Poha with peanuts", 350, protein=9, carb=55, at_hour=9)
+
+    # By construction (deterministic): the group-variant context never carries
+    # weight-invertible numbers, even with a full profile on file.
+    world = day._world
+    context = await build_recommendation_context(
+        user_id=day._id("@aarav"), sender_label="@aarav", surface="group",
+        slot="dinner", modifier=None, repo=world.photo_repo,
+        profile_repo=world.profile_repo, chat_id=world.chat_id,
+        timezone=world.settings.timezone,
+    )
+    assert context.calorie_target is None
+    assert context.protein_target_g is None
+    assert context.remaining_kcal is None
+    day._say("group context carries no raw targets or remaining budget")
+
+    await day.recommend("@aarav", "dinner", group=True, judge=REC_GROUP_PRIVATE)
+
+
+async def case_rec_buttons(day: Day) -> None:
+    """A bare /recommend shows the slot keyboard; a tap sends the command and gets options (deterministic)."""
+    keyboard_prompt = await day.recommend("@kabir", group=True)
+    assert "Pick a meal" in keyboard_prompt, keyboard_prompt
+    markup = day._world.tg.markups[-1]
+    assert markup and ["/recommend dinner", "/recommend snack"] in markup["keyboard"]
+    assert markup["one_time_keyboard"] and markup["selective"]
+
+    # Tapping a button sends its text as a normal command from the tapper.
+    reply = await day.recommend("@kabir", "dinner", group=True)
+    assert "What to eat next" in reply, reply
+
+
+async def case_rec_fallback(day: Day) -> None:
+    """Garbage LLM output falls back to safe deterministic options (deterministic)."""
+    from analyzers.recommend.parser import parse_recommendations
+    from domain.day import DayMacros
+    from domain.recommendation import MealRecommendationContext, fallback_recommendation
+    from presenters.recommend_reply import format_recommendation
+
+    assert parse_recommendations("not even json {{{") is None
+    assert parse_recommendations('{"because_today": "x", "options": []}') is None
+    context = MealRecommendationContext(
+        surface="dm", slot="dinner", modifier=None, time_context="", goal=None,
+        dietary="vegetarian", today_meals="", today_calories=0, macros=DayMacros(),
+        gaps=("protein",), preferences=(), has_history=False,
+    )
+    result = fallback_recommendation(context)
+    assert result.is_fallback and 2 <= len(result.options) <= 3
+    rendered = format_recommendation(result)
+    assert "What to eat next" in rendered and "None" not in rendered
+    day._say("parser rejected garbage; fallback rendered safe options")
+
+
+async def case_rec_label_collision(day: Day) -> None:
+    """Two members sharing a display label never read each other's meals (deterministic)."""
+    from workflows.build_recommendation_context import build_recommendation_context
+
+    world = day._world
+    # @twin's meals belong to the first user id; a second person with the same
+    # display label must get NO history, not their namesake's meals.
+    for offset in (1, 2, 3):
+        await day.seed_dish("@twin", "Dal tadka with roti", 500, days_ago=offset)
+    impostor_id = world.user_id(50)
+    context = await build_recommendation_context(
+        user_id=impostor_id, sender_label="@twin", surface="dm", slot="dinner",
+        modifier=None, repo=world.photo_repo, profile_repo=world.profile_repo,
+        chat_id=world.chat_id, timezone=world.settings.timezone,
+    )
+    assert not context.has_history and context.preferences == ()
+    day._say("same-label second member resolved to empty history, never the twin's")
+
+
 CASES = {
     "profile": case_profile,
     "context": case_context,
@@ -262,4 +446,14 @@ CASES = {
     "streak_grace": case_streak_grace,
     "streak_summary": case_streak_summary,
     "streak_nudge": case_streak_nudge,
+    "rec_veg": case_rec_veg,
+    "rec_protein_gap": case_rec_protein_gap,
+    "rec_sugar": case_rec_sugar,
+    "rec_low_intake": case_rec_low_intake,
+    "rec_gain": case_rec_gain,
+    "rec_history": case_rec_history,
+    "rec_group_privacy": case_rec_group_privacy,
+    "rec_buttons": case_rec_buttons,
+    "rec_fallback": case_rec_fallback,
+    "rec_label_collision": case_rec_label_collision,
 }

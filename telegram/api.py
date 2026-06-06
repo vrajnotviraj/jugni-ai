@@ -54,11 +54,13 @@ class TelegramBotApi:
         text: str,
         reply_to_message_id: int | None = None,
         parse_mode: str | None = None,
+        reply_markup: dict[str, Any] | None = None,
     ) -> None:
         if self._dry_run:
             print(
                 f"\n[DRY-RUN telegram] chat_id={chat_id} "
-                f"reply_to={reply_to_message_id} parse_mode={parse_mode}\n{text}\n"
+                f"reply_to={reply_to_message_id} parse_mode={parse_mode} "
+                f"reply_markup={reply_markup}\n{text}\n"
             )
             logger.info(
                 "dry-run send to chat=%s reply_to=%s", chat_id, reply_to_message_id
@@ -74,6 +76,8 @@ class TelegramBotApi:
         payload: dict[str, object] = {"chat_id": chat_id, "text": text}
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         if reply_to_message_id is not None and reply_to_message_id > 0:
             payload["reply_parameters"] = {
                 "message_id": reply_to_message_id,

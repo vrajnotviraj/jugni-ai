@@ -39,7 +39,7 @@ class Photo:
             chat_id=int(message["chat"]["id"]),
             message_id=int(message["message_id"]),
             sender_id=sender.get("id"),
-            sender_label=_sender_label(sender),
+            sender_label=sender_label_from(sender),
             sent_at=datetime.fromtimestamp(int(message["date"]), tz=UTC),
             file_id=largest["file_id"],
             file_unique_id=largest.get("file_unique_id"),
@@ -111,7 +111,12 @@ class UpdatedMeal:
     previous_calories: int
 
 
-def _sender_label(sender: dict[str, Any]) -> str:
+def sender_label_from(sender: dict[str, Any]) -> str:
+    """The display label meals are stored under, from a Telegram ``from`` object.
+
+    Public because command/callback parsing derives the same label to join a
+    requester back to their stored meals (see build_recommendation_context).
+    """
     username = sender.get("username")
     if username:
         return f"@{username}"
