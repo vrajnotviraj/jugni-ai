@@ -22,6 +22,7 @@ async def write_day_note(
     as_of: str = "",
     goal: str | None = None,
     dietary: str | None = None,
+    protein_target: int | None = None,
 ) -> DayNote:
     if not meals:
         return DayNote(summary="", health_score=0)
@@ -36,6 +37,7 @@ async def write_day_note(
     # (e.g. legacy photos predating the macro-aware photo analyzer). Showing
     # the LLM a row of zeros invites prose that calls out the missing data.
     macro_line = ""
+    protein_line = ""
     if any(
         (
             m.protein_g or m.carb_g or m.fat_g
@@ -48,6 +50,14 @@ async def write_day_note(
             f"fat {macros.fat_g}g, fibre {macros.fibre_g}g, added sugar "
             f"{macros.added_sugar_g}g, saturated fat {macros.sat_fat_g}g. "
         )
+        # The percentage is computed here, not by the model, so the prose's
+        # protein-progress read is always arithmetically honest.
+        if protein_target:
+            pct = round(macros.protein_g / protein_target * 100)
+            protein_line = (
+                f"Protein progress: {macros.protein_g}g of about "
+                f"{protein_target}g daily target (~{pct}% met). "
+            )
     timing_line = f"Timing context: {as_of} " if as_of else ""
     goal_line = f"This person's goal: {goal}. " if goal else ""
     # Dietary notes bound any food the summary suggests; see rule 1c in the prompt.
@@ -56,6 +66,7 @@ async def write_day_note(
     user_prompt = (
         f"Meals today (chronological): [{formatted_meals}]. Total: {total} kcal. "
         f"{macro_line}"
+        f"{protein_line}"
         f"{goal_line}"
         f"{dietary_line}"
         f"{timing_line}"

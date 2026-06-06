@@ -5,7 +5,12 @@ from zoneinfo import ZoneInfo
 from analyzers.summary.factory import DaySummarizer
 from core.dates import day_key_for_day_iso, summary_time_context, today_day_key
 from domain.breakdown import daily_user_breakdown
-from domain.calorie_target import calorie_target, goal_summary, highlight_macro
+from domain.calorie_target import (
+    calorie_target,
+    goal_summary,
+    highlight_macro,
+    protein_target_g,
+)
 from domain.day import DayNote, DayReport, UserDay
 from domain.photo import StoredPhoto
 from domain.profile import UserProfile
@@ -97,11 +102,12 @@ async def build_day_report(
         chat_id,
         day_key,
         users,
-        [note for note, _, _ in results],
+        [note for note, _, _, _ in results],
         total_photos=len(photos),
-        calorie_targets=[target for _, target, _ in results],
-        highlight_macros=[highlight for _, _, highlight in results],
+        calorie_targets=[target for _, target, _, _ in results],
+        highlight_macros=[highlight for _, _, highlight, _ in results],
         streaks=streak_lengths,
+        protein_targets=[protein for _, _, _, protein in results],
     )
 
 
@@ -114,13 +120,16 @@ async def _note_for_user(
     profile_repo: ProfileRepository | None,
     day_summarizer: DaySummarizer,
     day_key: str,
-) -> tuple[DayNote, int | None, str | None]:
+) -> tuple[DayNote, int | None, str | None, int | None]:
     # The profile (resolved once by the caller) gives the user's clock (R14), a
     # goal-with-target phrase for the note, and a calorie target for ranking.
     # ``zone`` is already the user's timezone, or the app default as a fallback.
     # Compute the target once and reuse it for both the goal phrase and ranking.
     target = calorie_target(profile)
     goal = goal_summary(profile, target)
+    # The protein target feeds the note's protein-progress read and the report's
+    # per-user protein gauge; None (no weight on file) just omits both.
+    protein_target = protein_target_g(profile)
     # The macro to emphasise in the summary's macro line, from the raw goal text.
     macro_highlight = highlight_macro(profile.goal if profile else None)
     dietary = await dietary_facts(profile, profile_repo, sender_id)
@@ -137,9 +146,13 @@ async def _note_for_user(
         len(user.meals),
     )
     note = await day_summarizer(
-        list(user.meals), as_of=time_context, goal=goal, dietary=dietary
+        list(user.meals),
+        as_of=time_context,
+        goal=goal,
+        dietary=dietary,
+        protein_target=protein_target,
     )
-    return note, target, macro_highlight
+    return note, target, macro_highlight, protein_target
 
 
 async def _load_profile(

@@ -2,7 +2,7 @@ import logging
 from html import escape
 
 from domain.day import DayMacros, DayReport, MealTimeline, UserDaySummary
-from presenters.macros import macro_shares
+from presenters.macros import macro_shares, protein_progress
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,10 @@ def _format_user_block(user: UserDaySummary) -> str:
 
 def _macro_line(user: UserDaySummary) -> str | None:
     """The day's protein/carb/fat balance as a share of calories, mirroring the
-    photo reply. The macro that matters for this person's goal is bolded, and a
-    single sugar/fibre flag is appended when the day is notably off on either.
+    photo reply. The macro that matters for this person's goal is bolded, a
+    protein-target gauge is appended when the person has a target (same
+    coloured-circle design as the photo reply), and a single sugar/fibre flag
+    is appended when the day is notably off on either.
     """
     ranked = macro_shares(
         user.macros.protein_g, user.macros.carb_g, user.macros.fat_g
@@ -102,6 +104,10 @@ def _macro_line(user: UserDaySummary) -> str | None:
             text = f"{icon} <b>{label} {pct}%</b>"
         pieces.append(text)
     line = " · ".join(pieces)
+    gauge = protein_progress(user.macros.protein_g, user.protein_target_g)
+    if gauge:
+        gauge_icon, gauge_pct = gauge
+        line = f"{line}  ·  {gauge_icon} protein {gauge_pct}% of target"
     flag = _macro_flag(user.macros, user.calories)
     if flag:
         line = f"{line}  ·  {flag}"

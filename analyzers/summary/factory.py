@@ -19,6 +19,7 @@ class DaySummarizer:
         as_of: str = "",
         goal: str | None = None,
         dietary: str | None = None,
+        protein_target: int | None = None,
     ) -> DayNote:
         return await write_day_note(
             self.client,
@@ -27,6 +28,7 @@ class DaySummarizer:
             as_of=as_of,
             goal=goal,
             dietary=dietary,
+            protein_target=protein_target,
         )
 
 
