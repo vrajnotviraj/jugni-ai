@@ -117,12 +117,12 @@ Ask "what should I eat next?" in your DM or in the group:
 | --------------------------- | ---------------------------------------------------------------------------- |
 | `/recommend`                | Four keyboard buttons (breakfast / lunch / dinner / snack); a tap sends that command for you |
 | `/recommend dinner`         | Options for that meal straight away                                           |
-| `/recommend high protein`   | Modifier steers the options; works combined: `/recommend light dinner`       |
+| `/recommend <anything>`     | Free text shapes the options: `/recommend light dinner`, `/recommend food that isn't oily` |
 | `/recommend snack` at 23:00 | An explicit ask is honoured at any hour with something sensible and light    |
 
-Each reply gives 2-3 realistic options with a rough calorie range, the plate's
-macro shape in words, why it fits today, and one top YouTube recipe link when
-search finds a clearly relevant match.
+Each reply gives 2-3 meaningfully different options, each with a rough calorie
+range and one line on why it fits your ask and your day, plus one top YouTube
+recipe link when search finds a clearly relevant match.
 
 What it uses: your goal and dietary limits (profile + context notes), today's
 logged meals, and today's macro gaps. All numbers are precomputed by the bot;

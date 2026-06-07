@@ -27,9 +27,7 @@ MIN_MEAL_KCAL = 300
 class RecommendedMealOption:
     title: str
     calorie_range: str
-    macro_shape: str
-    why_it_fits: str
-    portion_tweak: str = ""
+    why: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,14 +43,13 @@ class MealRecommendationContext:
     """Everything the recommender prompt may state as fact, precomputed in code.
 
     ``surface`` enforces group privacy by construction: the builder never sets
-    ``calorie_target``/``protein_target_g``/``remaining_kcal`` (all weight-
-    invertible) for the group surface, so they cannot leak into a group prompt.
+    ``calorie_target``/``remaining_kcal`` (both weight-invertible) for the
+    group surface, so they cannot leak into a group prompt.
     """
 
     surface: str  # "dm" | "group"
     slot: str  # one of MEAL_SLOTS
     slot_is_explicit: bool
-    modifier: str | None  # "high protein" | "light" | None
     user_request: str
     time_context: str
     goal: str | None
@@ -62,7 +59,6 @@ class MealRecommendationContext:
     macros: DayMacros
     gaps: tuple[str, ...]
     calorie_target: int | None = None  # DM only
-    protein_target_g: int | None = None  # DM only
     remaining_kcal: int | None = None  # DM only
     protein_pct: int | None = None  # % of protein target met; group-safe
 
@@ -118,25 +114,21 @@ _FALLBACK_TABLE: dict[str, tuple[RecommendedMealOption, ...]] = {
         RecommendedMealOption(
             "Besan chilla with mint chutney",
             "~250-350 kcal",
-            "protein-forward with steady carbs",
             "A familiar savoury start that gets real protein in early.",
         ),
         RecommendedMealOption(
             "Egg bhurji with whole-wheat roti",
             "~300-400 kcal",
-            "protein-led with whole grains",
             "Eggs make an easy protein anchor for the morning.",
         ),
         RecommendedMealOption(
             "Oats cooked in milk with nuts and seeds",
             "~300-400 kcal",
-            "balanced, fibre-forward",
             "Whole grains and dairy cover fibre and protein together.",
         ),
         RecommendedMealOption(
             "Poha with peanuts and sprouts",
             "~300-400 kcal",
-            "light carbs with added protein",
             "The sprouts and peanuts lift an everyday breakfast's protein.",
         ),
     ),
@@ -144,25 +136,21 @@ _FALLBACK_TABLE: dict[str, tuple[RecommendedMealOption, ...]] = {
         RecommendedMealOption(
             "Dal, roti, sabzi and a side salad",
             "~450-600 kcal",
-            "balanced plate, protein from the dal",
             "The classic complete plate: pulse, grain, vegetable.",
         ),
         RecommendedMealOption(
             "Paneer bhurji with whole-wheat roti and kachumber",
             "~450-600 kcal",
-            "protein-led with fresh vegetables",
             "Paneer carries the protein while the salad adds crunch and fibre.",
         ),
         RecommendedMealOption(
             "Grilled chicken with rice and salad",
             "~450-600 kcal",
-            "lean protein with moderate carbs",
             "A lean protein anchor that keeps the plate light.",
         ),
         RecommendedMealOption(
             "Rajma chawal with kachumber",
             "~500-650 kcal",
-            "pulse protein with comforting carbs",
             "Rajma makes a filling, protein-fair lunch with fresh crunch.",
         ),
     ),
@@ -170,25 +158,21 @@ _FALLBACK_TABLE: dict[str, tuple[RecommendedMealOption, ...]] = {
         RecommendedMealOption(
             "Moong dal khichdi with a lauki sabzi",
             "~400-550 kcal",
-            "light, easy protein and fibre",
             "Gentle on a full day while still landing protein and fibre.",
         ),
         RecommendedMealOption(
             "Paneer and vegetable stir-fry with roti",
             "~400-550 kcal",
-            "protein-forward with plenty of vegetables",
             "Paneer plus vegetables keeps dinner light but substantial.",
         ),
         RecommendedMealOption(
             "Grilled fish with sauteed vegetables",
             "~350-500 kcal",
-            "lean protein, low carb",
             "A light protein-led dinner that sits easy late in the day.",
         ),
         RecommendedMealOption(
             "Dal with jeera rice and a side salad",
             "~450-600 kcal",
-            "balanced comfort plate",
             "A steady pulse-and-grain dinner with fibre from the salad.",
         ),
     ),
@@ -196,25 +180,21 @@ _FALLBACK_TABLE: dict[str, tuple[RecommendedMealOption, ...]] = {
         RecommendedMealOption(
             "Sprouts chaat with onion, tomato and lemon",
             "~150-250 kcal",
-            "protein and fibre, very light",
             "A fresh, crunchy snack that quietly adds protein.",
         ),
         RecommendedMealOption(
             "Boiled eggs with a pinch of chaat masala",
             "~150-200 kcal",
-            "almost pure protein",
             "The simplest protein top-up between meals.",
         ),
         RecommendedMealOption(
             "Roasted chana with a glass of chaas",
             "~150-250 kcal",
-            "protein and fibre with light dairy",
             "Crunchy, familiar, and far better company than a biscuit.",
         ),
         RecommendedMealOption(
             "A bowl of fruit with a handful of nuts",
             "~150-250 kcal",
-            "fibre with healthy fats",
             "Whole fruit and nuts cover the sweet craving the honest way.",
         ),
     ),

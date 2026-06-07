@@ -40,6 +40,7 @@ REC_NO_SWEETS = "No suggested option is a dessert, mithai, or sweetened drink, a
 REC_EAT_SOMETHING = "The text encourages eating a sensible meal. It never suggests skipping a meal, fasting, a detox, or going without food; suggesting lighter dishes or moderate portions within a real meal is fine."
 REC_GAIN = "The options suit a muscle-gain goal: protein-forward with adequate calories, with no starvation or restriction framing."
 REC_GROUP_PRIVATE = "The text contains no body measurements (weight, height, age, sex), no daily calorie or protein target NUMBERS, no remaining-calorie-budget numbers, and no mention of any health condition (such as diabetes) or medical reasoning. Qualitative gap language ('protein is still low', 'fills the protein gap'), percentages, and the dishes already eaten today are all fine — only explicit numbers and health conditions fail."
+REC_REQUEST = "The reply visibly answers the user's specific ask to avoid oily or greasy food: no deep-fried or oil-heavy dish is suggested, at least one line acknowledges that ask, and the options are meaningfully different dishes rather than three near-identical variations with the same calorie range."
 
 # Photos are tagged by filename: s_ = snack, m_ = meal. Times come from these windows.
 SNACK_WINDOWS = [(7, 10), (15, 17)]  # 7-11 AM, 3-6 PM
@@ -355,6 +356,14 @@ async def case_rec_gain(day: Day) -> None:
     await day.recommend("@neel", "lunch", judge=REC_GAIN)
 
 
+async def case_rec_request(day: Day) -> None:
+    """An unusual free-text ask shapes every option, not just the day's gaps."""
+    await day.seed_dish(
+        "@isha", "Aloo paratha with butter", 550, carb=70, protein=10, at_hour=9
+    )
+    await day.recommend("@isha", "food that doesn't cause oily skin", judge=REC_REQUEST)
+
+
 async def case_rec_today_only(day: Day) -> None:
     """Past meals are not loaded into the recommendation context."""
     from workflows.build_recommendation_context import build_recommendation_context
@@ -366,7 +375,6 @@ async def case_rec_today_only(day: Day) -> None:
         sender_label="@aarav",
         surface="dm",
         slot="dinner",
-        modifier=None,
         user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
@@ -395,7 +403,6 @@ async def case_rec_group_privacy(day: Day) -> None:
         sender_label="@aarav",
         surface="group",
         slot="dinner",
-        modifier=None,
         user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
@@ -403,7 +410,6 @@ async def case_rec_group_privacy(day: Day) -> None:
         timezone=world.settings.timezone,
     )
     assert context.calorie_target is None
-    assert context.protein_target_g is None
     assert context.remaining_kcal is None
     assert not context.dietary or "diabet" not in context.dietary.casefold()
     day._say("group context carries no raw targets or remaining budget")
@@ -434,26 +440,22 @@ async def case_rec_fallback(day: Day) -> None:
     assert parse_recommendations("not even json {{{") is None
     assert parse_recommendations('{"because_today": "x", "options": []}') is None
     parsed = parse_recommendations(
-        '{"because_today":"x","recipe_video_url":"https://youtu.be/abc","options":['
-        '{"title":"Dal","calorie_range":"~300-400 kcal","macro_shape":"protein",'
-        '"why_it_fits":"fits today","portion_tweak":""},'
-        '{"title":"Chana","calorie_range":"~300-400 kcal","macro_shape":"fibre",'
-        '"why_it_fits":"fits today","portion_tweak":""}]}'
+        '{"request_take":"next meal","because_today":"x",'
+        '"recipe_video_url":"https://youtu.be/abc","options":['
+        '{"title":"Dal","calorie_range":"~300-400 kcal","why":"fits today"},'
+        '{"title":"Chana","calorie_range":"~200-300 kcal","why":"fits today"}]}'
     )
     assert parsed and parsed.recipe_video_url == "https://youtu.be/abc"
     parsed = parse_recommendations(
         '{"because_today":"x","recipe_video_url":"https://example.com/recipe","options":['
-        '{"title":"Dal","calorie_range":"~300-400 kcal","macro_shape":"protein",'
-        '"why_it_fits":"fits today","portion_tweak":""},'
-        '{"title":"Chana","calorie_range":"~300-400 kcal","macro_shape":"fibre",'
-        '"why_it_fits":"fits today","portion_tweak":""}]}'
+        '{"title":"Dal","calorie_range":"~300-400 kcal","why":"fits today"},'
+        '{"title":"Chana","calorie_range":"~200-300 kcal","why":"fits today"}]}'
     )
     assert parsed and not parsed.recipe_video_url
     context = MealRecommendationContext(
         surface="dm",
         slot="dinner",
         slot_is_explicit=True,
-        modifier=None,
         user_request="",
         time_context="",
         goal=None,
@@ -484,7 +486,6 @@ async def case_rec_label_collision(day: Day) -> None:
         sender_label="@twin",
         surface="dm",
         slot="dinner",
-        modifier=None,
         user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
@@ -510,6 +511,7 @@ CASES = {
     "rec_sugar": case_rec_sugar,
     "rec_low_intake": case_rec_low_intake,
     "rec_gain": case_rec_gain,
+    "rec_request": case_rec_request,
     "rec_today_only": case_rec_today_only,
     "rec_group_privacy": case_rec_group_privacy,
     "rec_buttons": case_rec_buttons,

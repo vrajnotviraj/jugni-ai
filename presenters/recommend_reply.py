@@ -24,7 +24,7 @@ def format_recommendation(
     for_label: str = "",
 ) -> str:
     """The recommendation as a Telegram HTML message. All LLM-originated text
-    is escaped; empty optional fields are skipped, never rendered as None."""
+    is escaped. Each option is a tight two-line block so the list scans fast."""
     heading = "🍽 <b>What to eat next</b>"
     if for_label:
         heading += f" · {escape(for_label, quote=False)}"
@@ -34,11 +34,8 @@ def format_recommendation(
         lines.append(f"<b>{number}. {escape(option.title, quote=False)}</b>")
         lines.append(
             f"{escape(option.calorie_range, quote=False)} · "
-            f"<i>{escape(option.macro_shape, quote=False)}</i>"
+            f"<i>{escape(option.why, quote=False)}</i>"
         )
-        lines.append(escape(option.why_it_fits, quote=False))
-        if option.portion_tweak:
-            lines.append(f"Adjust: {escape(option.portion_tweak, quote=False)}")
     if result.recipe_video_url:
         lines.append("")
         lines.append(

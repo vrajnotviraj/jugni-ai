@@ -32,7 +32,6 @@ async def build_recommendation_context(
     sender_label: str,
     surface: str,
     slot: str | None,
-    modifier: str | None,
     user_request: str,
     repo: PhotoRepository,
     profile_repo: ProfileRepository,
@@ -90,7 +89,6 @@ async def build_recommendation_context(
         surface=surface,
         slot=resolved_slot,
         slot_is_explicit=explicit_slot,
-        modifier=modifier,
         user_request=user_request,
         time_context=_time_line(zone, resolved_slot, explicit=explicit_slot),
         # The group surface gets the goal's direction in the user's own words,
@@ -105,7 +103,6 @@ async def build_recommendation_context(
         gaps=gaps,
         # Weight-invertible numbers never enter a group-surface context.
         calorie_target=None if is_group else target,
-        protein_target_g=None if is_group else protein_target,
         remaining_kcal=None if is_group else _remaining(target, today_calories),
         protein_pct=protein_pct,
     )
