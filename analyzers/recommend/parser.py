@@ -2,9 +2,15 @@ from domain.recommendation import MealRecommendationResult, RecommendedMealOptio
 from llm.json_parsing import parse_fenced_json
 
 # Defensive caps so a runaway model can never flood a Telegram message.
-_TITLE_MAX = 100
-_FIELD_MAX = 250
+_MAX_OPTIONS = 3
+_TITLE_MAX = 80
+_FIELD_MAX = 160
 _REQUIRED_FIELDS = ("title", "calorie_range", "macro_shape", "why_it_fits")
+_YOUTUBE_PREFIXES = (
+    "https://www.youtube.com/",
+    "https://youtube.com/",
+    "https://youtu.be/",
+)
 
 
 def parse_recommendations(raw: str) -> MealRecommendationResult | None:
@@ -21,14 +27,15 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
         return None
 
     because = payload.get("because_today")
+    recipe_video_url = payload.get("recipe_video_url")
     raw_options = payload.get("options")
     if not isinstance(because, str) or not because.strip():
         return None
-    if not isinstance(raw_options, list) or not 2 <= len(raw_options) <= 4:
+    if not isinstance(raw_options, list) or len(raw_options) < 2:
         return None
 
     options: list[RecommendedMealOption] = []
-    for item in raw_options:
+    for item in raw_options[:_MAX_OPTIONS]:
         if not isinstance(item, dict):
             return None
         fields: dict[str, str] = {}
@@ -50,4 +57,14 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
     return MealRecommendationResult(
         because_today=because.strip()[:_FIELD_MAX],
         options=tuple(options),
+        recipe_video_url=_clean_youtube_url(recipe_video_url),
     )
+
+
+def _clean_youtube_url(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    url = value.strip()
+    if any(url.startswith(prefix) for prefix in _YOUTUBE_PREFIXES):
+        return url
+    return ""

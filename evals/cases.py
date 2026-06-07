@@ -367,6 +367,7 @@ async def case_rec_today_only(day: Day) -> None:
         surface="dm",
         slot="dinner",
         modifier=None,
+        user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
         chat_id=world.chat_id,
@@ -395,6 +396,7 @@ async def case_rec_group_privacy(day: Day) -> None:
         surface="group",
         slot="dinner",
         modifier=None,
+        user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
         chat_id=world.chat_id,
@@ -403,6 +405,7 @@ async def case_rec_group_privacy(day: Day) -> None:
     assert context.calorie_target is None
     assert context.protein_target_g is None
     assert context.remaining_kcal is None
+    assert not context.dietary or "diabet" not in context.dietary.casefold()
     day._say("group context carries no raw targets or remaining budget")
 
     await day.recommend("@aarav", "dinner", group=True, judge=REC_GROUP_PRIVATE)
@@ -414,7 +417,7 @@ async def case_rec_buttons(day: Day) -> None:
     assert "Pick a meal" in keyboard_prompt, keyboard_prompt
     markup = day._world.tg.markups[-1]
     assert markup and ["/recommend dinner", "/recommend snack"] in markup["keyboard"]
-    assert markup["one_time_keyboard"] and markup["selective"]
+    assert markup["one_time_keyboard"] and "selective" not in markup
 
     # Tapping a button sends its text as a normal command from the tapper.
     reply = await day.recommend("@kabir", "dinner", group=True)
@@ -430,10 +433,28 @@ async def case_rec_fallback(day: Day) -> None:
 
     assert parse_recommendations("not even json {{{") is None
     assert parse_recommendations('{"because_today": "x", "options": []}') is None
+    parsed = parse_recommendations(
+        '{"because_today":"x","recipe_video_url":"https://youtu.be/abc","options":['
+        '{"title":"Dal","calorie_range":"~300-400 kcal","macro_shape":"protein",'
+        '"why_it_fits":"fits today","portion_tweak":""},'
+        '{"title":"Chana","calorie_range":"~300-400 kcal","macro_shape":"fibre",'
+        '"why_it_fits":"fits today","portion_tweak":""}]}'
+    )
+    assert parsed and parsed.recipe_video_url == "https://youtu.be/abc"
+    parsed = parse_recommendations(
+        '{"because_today":"x","recipe_video_url":"https://example.com/recipe","options":['
+        '{"title":"Dal","calorie_range":"~300-400 kcal","macro_shape":"protein",'
+        '"why_it_fits":"fits today","portion_tweak":""},'
+        '{"title":"Chana","calorie_range":"~300-400 kcal","macro_shape":"fibre",'
+        '"why_it_fits":"fits today","portion_tweak":""}]}'
+    )
+    assert parsed and not parsed.recipe_video_url
     context = MealRecommendationContext(
         surface="dm",
         slot="dinner",
+        slot_is_explicit=True,
         modifier=None,
+        user_request="",
         time_context="",
         goal=None,
         dietary="vegetarian",
@@ -464,6 +485,7 @@ async def case_rec_label_collision(day: Day) -> None:
         surface="dm",
         slot="dinner",
         modifier=None,
+        user_request="dinner",
         repo=world.photo_repo,
         profile_repo=world.profile_repo,
         chat_id=world.chat_id,

@@ -70,6 +70,7 @@ async def handle_recommend_command(
         surface=command.surface,
         slot=slot,
         modifier=modifier,
+        user_request=command.text.strip(),
         repo=repo,
         profile_repo=profile_repo,
         chat_id=history_chat_id,
@@ -87,8 +88,7 @@ async def handle_recommend_command(
 
 
 def parse_request_text(text: str) -> tuple[str | None, str | None]:
-    """Slot and modifier keywords from free text; unrecognized words are no
-    preference (R1). Public so evals can pin the token grammar."""
+    """Slot and modifier keywords from free text; raw text goes to the prompt."""
     lowered = text.casefold()
     slot = next((s for s in MEAL_SLOTS if s in lowered), None)
     modifier = next((m for m in _MODIFIERS if m in lowered), None)

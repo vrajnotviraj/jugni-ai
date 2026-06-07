@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core.dates import DAY_OVER_HOUR, next_meal_slot, today_day_key
+from core.dates import next_meal_slot, today_day_key
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.day import DayMacros
 from domain.photo import StoredPhoto
@@ -33,6 +33,7 @@ async def build_recommendation_context(
     surface: str,
     slot: str | None,
     modifier: str | None,
+    user_request: str,
     repo: PhotoRepository,
     profile_repo: ProfileRepository,
     chat_id: int | None,
@@ -76,9 +77,8 @@ async def build_recommendation_context(
     explicit_slot = slot is not None
     resolved_slot = slot or next_meal_slot(zone)
 
-    dietary = await dietary_facts(profile, profile_repo, user_id)
-
     is_group = surface == "group"
+    dietary = await dietary_facts(profile, profile_repo, user_id, public=is_group)
     logger.info(
         "recommend context user=%s surface=%s slot=%s today_meals=%s",
         user_id,
@@ -89,7 +89,9 @@ async def build_recommendation_context(
     return MealRecommendationContext(
         surface=surface,
         slot=resolved_slot,
+        slot_is_explicit=explicit_slot,
         modifier=modifier,
+        user_request=user_request,
         time_context=_time_line(zone, resolved_slot, explicit=explicit_slot),
         # The group surface gets the goal's direction in the user's own words,
         # never the derived calorie figure goal_summary appends.
@@ -158,12 +160,7 @@ def _time_line(zone: ZoneInfo, slot: str, *, explicit: bool) -> str:
             f"{line} They explicitly asked for a {slot} suggestion; "
             "honour it at this hour."
         )
-    if slot == "breakfast" and now.hour >= DAY_OVER_HOUR:
-        return (
-            f"{line} The eating day is winding down, so this plans "
-            "tomorrow's breakfast."
-        )
-    return f"{line} The natural next meal is {slot}."
+    return f"{line} If the user request is vague, the fallback meal slot is {slot}."
 
 
 def _format_meals(photos: list[StoredPhoto], zone: ZoneInfo) -> str:
