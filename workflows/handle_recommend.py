@@ -16,6 +16,7 @@ from analyzers.recommend.recommender import Recommender
 from domain.recommendation import MEAL_SLOTS
 from presenters.recommend_reply import (
     PICK_SLOT_TEXT,
+    RECOMMEND_LINK_PREVIEW,
     RECOMMEND_REPLY_PARSE_MODE,
     SLOT_KEYBOARD,
     format_recommendation,
@@ -109,6 +110,7 @@ async def _safely_send(
             reply_to_message_id=reply_to_message_id,
             parse_mode=RECOMMEND_REPLY_PARSE_MODE,
             reply_markup=reply_markup,
+            link_preview_options=RECOMMEND_LINK_PREVIEW,
         )
     except Exception:
         logger.exception("recommend reply failed chat=%s", chat_id)
