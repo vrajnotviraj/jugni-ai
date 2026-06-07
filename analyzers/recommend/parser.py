@@ -5,11 +5,17 @@ from llm.json_parsing import parse_fenced_json
 _MAX_OPTIONS = 3
 _TITLE_MAX = 80
 _FIELD_MAX = 160
-_REQUIRED_FIELDS = ("title", "calorie_range", "macro_shape", "why_it_fits")
+_REQUIRED_FIELDS = ("title", "calorie_range", "why")
 _YOUTUBE_PREFIXES = (
     "https://www.youtube.com/",
     "https://youtube.com/",
     "https://youtu.be/",
+)
+
+# The prompt asks for plain ASCII, but models still leak typographic
+# punctuation; normalising here is more reliable than more prompt rules.
+_ASCII_PUNCTUATION = str.maketrans(
+    {"’": "'", "‘": "'", "“": '"', "”": '"', "‑": "-", "–": "-", "—": "-", " ": " "}
 )
 
 
@@ -17,7 +23,8 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
     """Validate the model's JSON into a result, or None for any malformed shape.
 
     None tells the recommender to fall back deterministically (R18); this
-    function itself never raises.
+    function itself never raises. Extra keys (like the request_take anchor the
+    prompt asks for) are simply ignored.
     """
     try:
         payload = parse_fenced_json(raw)
@@ -27,7 +34,6 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
         return None
 
     because = payload.get("because_today")
-    recipe_video_url = payload.get("recipe_video_url")
     raw_options = payload.get("options")
     if not isinstance(because, str) or not because.strip():
         return None
@@ -44,21 +50,17 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
             if not isinstance(value, str) or not value.strip():
                 return None
             cap = _TITLE_MAX if key == "title" else _FIELD_MAX
-            fields[key] = value.strip()[:cap]
-        tweak = item.get("portion_tweak")
-        options.append(
-            RecommendedMealOption(
-                **fields,
-                portion_tweak=tweak.strip()[:_FIELD_MAX]
-                if isinstance(tweak, str)
-                else "",
-            )
-        )
+            fields[key] = _clean_text(value, cap)
+        options.append(RecommendedMealOption(**fields))
     return MealRecommendationResult(
-        because_today=because.strip()[:_FIELD_MAX],
+        because_today=_clean_text(because, _FIELD_MAX),
         options=tuple(options),
-        recipe_video_url=_clean_youtube_url(recipe_video_url),
+        recipe_video_url=_clean_youtube_url(payload.get("recipe_video_url")),
     )
+
+
+def _clean_text(value: str, cap: int) -> str:
+    return value.translate(_ASCII_PUNCTUATION).strip()[:cap]
 
 
 def _clean_youtube_url(value: object) -> str:

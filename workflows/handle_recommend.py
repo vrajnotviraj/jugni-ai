@@ -27,8 +27,6 @@ from workflows.build_recommendation_context import build_recommendation_context
 
 logger = logging.getLogger(__name__)
 
-_MODIFIERS = ("high protein", "light")
-
 
 async def handle_recommend_command(
     command: RecommendCommand,
@@ -55,7 +53,7 @@ async def handle_recommend_command(
         )
         return
 
-    slot, modifier = parse_request_text(command.text)
+    slot = parse_slot(command.text)
     # Meal history lives in the group chat: the command's own chat on the
     # group surface, the first allowed group for a DM (KTD7). No allowed
     # group means a profile-only recommendation.
@@ -69,7 +67,6 @@ async def handle_recommend_command(
         sender_label=command.sender_label,
         surface=command.surface,
         slot=slot,
-        modifier=modifier,
         user_request=command.text.strip(),
         repo=repo,
         profile_repo=profile_repo,
@@ -87,12 +84,10 @@ async def handle_recommend_command(
     )
 
 
-def parse_request_text(text: str) -> tuple[str | None, str | None]:
-    """Slot and modifier keywords from free text; raw text goes to the prompt."""
+def parse_slot(text: str) -> str | None:
+    """The slot keyword from free text; the raw text itself goes to the prompt."""
     lowered = text.casefold()
-    slot = next((s for s in MEAL_SLOTS if s in lowered), None)
-    modifier = next((m for m in _MODIFIERS if m in lowered), None)
-    return slot, modifier
+    return next((s for s in MEAL_SLOTS if s in lowered), None)
 
 
 async def _safely_send(

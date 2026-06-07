@@ -68,7 +68,7 @@ class HelpCommand:
 
 # /recommend works on both surfaces; ``surface`` records which one so dispatch
 # can keep the group allowlist gate. ``text`` is the raw argument string; the
-# recommend workflow extracts the slot/modifier keywords itself. ``message_id``
+# recommend workflow extracts the slot keyword itself. ``message_id``
 # lets the group reply thread back to the command (and scope the slot keyboard
 # to its sender via Telegram's ``selective`` flag).
 @dataclass(frozen=True, slots=True)
