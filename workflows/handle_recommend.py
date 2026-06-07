@@ -9,6 +9,7 @@ its sender.
 """
 
 import logging
+import re
 from zoneinfo import ZoneInfo
 
 from analyzers.recommend.recommender import Recommender
@@ -85,9 +86,12 @@ async def handle_recommend_command(
 
 
 def parse_slot(text: str) -> str | None:
-    """The slot keyword from free text; the raw text itself goes to the prompt."""
+    """The slot keyword from free text; the raw text itself goes to the prompt.
+
+    Whole-word match (plural allowed) so "brunch" or "lunchbox" never reads
+    as an explicit lunch ask."""
     lowered = text.casefold()
-    return next((s for s in MEAL_SLOTS if s in lowered), None)
+    return next((s for s in MEAL_SLOTS if re.search(rf"\b{s}s?\b", lowered)), None)
 
 
 async def _safely_send(
