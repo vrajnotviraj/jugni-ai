@@ -264,7 +264,9 @@ class World:
 async def build_world() -> World:
     s = Settings.from_environment()
     redis = Redis.from_url(s.redis_url, decode_responses=True)
-    openai = AsyncOpenAI(api_key=s.openai_api_key)
+    # Generous retries: eval runs share the project's rate limits with the
+    # live bot, so a 429 should back off and continue, not sink the case.
+    openai = AsyncOpenAI(api_key=s.openai_api_key, max_retries=5)
     tg = _Telegram()
     photo_repo = RedisPhotoRepository(redis, timezone=s.timezone)
     profile_repo = RedisProfileRepository(redis)

@@ -9,11 +9,18 @@ master function judges the text the cases produce.
 
 ```bash
 # put a few real food photos in evals/photos/ first (gitignored).
-python -m evals.run                 # run every case
+python -m evals.run                 # quick smoke set (default)
+python -m evals.run --all           # every case (slow: many OpenAI calls)
 python -m evals.run profile day     # run only chosen cases
 python -m evals.run --list          # list cases
 python -m evals.run --no-judge      # skip the LLM grading
 ```
+
+Cases run sequentially and the default is a small smoke set, because OpenAI
+rate limits are **per project** — shared by every API key in it, including the
+live bot's — so a big parallel eval run can starve production. `--all` prints
+a heads-up about the expected runtime; when iterating, name just the case you
+care about.
 
 Name photos by type and dish: prefix `s_` for a snack (posted 7–11 AM / 3–6 PM) or
 `m_` for a meal (12–3 PM / 7–10 PM). The prefix sets a realistic time; the rest of
