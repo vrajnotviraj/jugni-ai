@@ -7,12 +7,29 @@ from storage.profile_repository import ProfileRepository
 # the rewriter keeps each note atomic, so splitting on these joiners gives us the
 # individual facts to dedup across both sources.
 _FACT_SPLIT = re.compile(r"[;,]")
+_SENSITIVE_HEALTH_TERMS = (
+    "diabet",
+    "blood sugar",
+    "hypertension",
+    "cholesterol",
+    "thyroid",
+    "pcos",
+    "pcod",
+    "condition",
+    "treatment",
+    "medicine",
+    "medication",
+    "metformin",
+    "insulin",
+)
 
 
 async def dietary_facts(
     profile: UserProfile | None,
     profile_repo: ProfileRepository | None,
     sender_id: int | None,
+    *,
+    public: bool = False,
 ) -> str | None:
     """Combine the profile's diet field with the user's standing context notes
     into one deduped "dietary facts" string for the analyzers, or None.
@@ -42,6 +59,12 @@ async def dietary_facts(
             key = fact.casefold()
             if not fact or key in seen:
                 continue
+            if public and _is_sensitive_health_fact(key):
+                continue
             seen.add(key)
             facts.append(fact)
     return "; ".join(facts) if facts else None
+
+
+def _is_sensitive_health_fact(text: str) -> bool:
+    return any(term in text for term in _SENSITIVE_HEALTH_TERMS)

@@ -120,8 +120,9 @@ Ask "what should I eat next?" in your DM or in the group:
 | `/recommend high protein`   | Modifier steers the options; works combined: `/recommend light dinner`       |
 | `/recommend snack` at 23:00 | An explicit ask is honoured at any hour with something sensible and light    |
 
-Each reply gives 2-4 realistic options with a rough calorie range, the plate's
-macro shape in words, and why it fits today.
+Each reply gives 2-3 realistic options with a rough calorie range, the plate's
+macro shape in words, why it fits today, and one top YouTube recipe link when
+search finds a clearly relevant match.
 
 What it uses: your goal and dietary limits (profile + context notes), today's
 logged meals, and today's macro gaps. All numbers are precomputed by the bot;
@@ -136,8 +137,7 @@ Notes:
   are stripped before the prompt is built, not merely instructed away.
 - **Buttons are plain commands.** A tap just sends `/recommend <meal>` as your
   own message, so whoever taps gets their own recommendation, charged to their
-  own daily limit. In groups the keyboard is shown only to the requester and
-  hides after one tap.
+  own daily limit. In groups the keyboard is visible and hides after one tap.
 - **Cost cap.** Each recommendation counts against the same daily AI-reply
   limit as other LLM commands. The button prompt itself is free.
 - **Limits.** Calorie figures are honest ranges, not measurements. Suggestions

@@ -36,6 +36,7 @@ class RecommendedMealOption:
 class MealRecommendationResult:
     because_today: str
     options: tuple[RecommendedMealOption, ...]
+    recipe_video_url: str = ""
     is_fallback: bool = False
 
 
@@ -50,7 +51,9 @@ class MealRecommendationContext:
 
     surface: str  # "dm" | "group"
     slot: str  # one of MEAL_SLOTS
+    slot_is_explicit: bool
     modifier: str | None  # "high protein" | "light" | None
+    user_request: str
     time_context: str
     goal: str | None
     dietary: str | None

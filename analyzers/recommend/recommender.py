@@ -17,6 +17,11 @@ from llm.openai_client import call_responses
 
 logger = logging.getLogger(__name__)
 
+_YOUTUBE_SEARCH_TOOL = {
+    "type": "web_search",
+    "search_context_size": "low",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Recommender:
@@ -35,6 +40,7 @@ class Recommender:
                 model=self.model,
                 system=RECOMMEND_SYSTEM_PROMPT,
                 user=recommend_user_prompt(context),
+                tools=[_YOUTUBE_SEARCH_TOOL],
                 cache_key="recommend",
             )
             result = parse_recommendations(raw)
