@@ -124,9 +124,10 @@ class Day:
                 f"{user} posts at {when}: {analysis['dish']} · {analysis['calories']} kcal"
             )
             print(f"        tip: {tip or '(no tip)'}")
-        # Every food plate gets a coaching line now; guard on tip anyway so a rare
-        # empty reply never trips the judge.
-        if judge and tip:
+        # Every food plate should get a coaching line now; judge even an empty
+        # tip so a regression that drops the line fails the grader loudly instead
+        # of slipping past it.
+        if judge:
             self.to_judge.append((f"tip · {analysis['dish']}", tip, judge))
         if judge_reply:
             reply = _plain(result.get("reply_text", ""))

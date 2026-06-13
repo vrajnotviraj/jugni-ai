@@ -300,27 +300,42 @@ async def _deliver(
 ) -> None:
     """Show the finished card: edit the placeholder in place, or send fresh when
     there was no placeholder (duplicate replies) or the edit fails."""
-    try:
-        if placeholder_id is not None:
+    if placeholder_id is not None:
+        try:
             await telegram.edit_message_text(
                 chat_id=photo.chat_id,
                 message_id=placeholder_id,
                 text=text,
                 parse_mode=PHOTO_REPLY_PARSE_MODE,
             )
-        else:
-            await telegram.send_message(
-                chat_id=photo.chat_id,
-                text=text,
-                reply_to_message_id=photo.message_id,
-                parse_mode=PHOTO_REPLY_PARSE_MODE,
+            logger.info(
+                "replied chat=%s msg=%s sender=%s edited=true",
+                photo.chat_id,
+                photo.message_id,
+                photo.sender_label,
             )
+            return
+        except Exception:
+            # The placeholder edit failed (deleted message, stale id); fall back
+            # to a fresh card so the reply is never silently dropped.
+            logger.exception(
+                "placeholder edit failed chat=%s msg=%s — sending fresh card",
+                photo.chat_id,
+                photo.message_id,
+            )
+
+    try:
+        await telegram.send_message(
+            chat_id=photo.chat_id,
+            text=text,
+            reply_to_message_id=photo.message_id,
+            parse_mode=PHOTO_REPLY_PARSE_MODE,
+        )
         logger.info(
-            "replied chat=%s msg=%s sender=%s edited=%s",
+            "replied chat=%s msg=%s sender=%s edited=false",
             photo.chat_id,
             photo.message_id,
             photo.sender_label,
-            placeholder_id is not None,
         )
     except Exception:
         logger.exception(

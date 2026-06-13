@@ -65,8 +65,10 @@ class RedisPhotoRepository:
         message_ids = await self._redis.smembers(
             _user_day_key(photo.chat_id, day_key, photo.sender_label)
         )
-        for message_id in message_ids:
-            raw = await self._redis.hgetall(_photo_key(photo.chat_id, int(message_id)))
+        # `smembers` is unordered; walk newest-first so a match is deterministic
+        # when the same image was posted more than once in the day.
+        for message_id in sorted((int(m) for m in message_ids), reverse=True):
+            raw = await self._redis.hgetall(_photo_key(photo.chat_id, message_id))
             if _same_photo(raw, photo, content_hash):
                 analysis = analysis_from_hash(raw)
                 if analysis is not None:
