@@ -63,6 +63,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "analyzers/image/extraction/prompts.py" = ["E501"]
 "analyzers/image/coaching/prompts.py" = ["E501"]
+"analyzers/intake/prompts.py" = ["E501"]
 "analyzers/summary/prompts.py" = ["E501"]
 "analyzers/profile/prompts.py" = ["E501"]
 "analyzers/context/prompts.py" = ["E501"]

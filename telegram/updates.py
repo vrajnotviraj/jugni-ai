@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from domain.photo import Photo, sender_label_from
@@ -82,6 +83,22 @@ class RecommendCommand:
     surface: str  # "dm" | "group"
 
 
+# /intake <free text>: a typed meal ("2 blocks chocolate + 10g almonds") that is
+# analysed and logged like a photo. Works on both surfaces (like /recommend);
+# ``surface`` records which one so dispatch keeps the group allowlist gate.
+# ``sent_at`` buckets the meal into the sender's local day.
+@dataclass(frozen=True, slots=True)
+class IntakeCommand:
+    user_id: int
+    chat_id: int
+    message_id: int
+    sender_label: str
+    display_name: str
+    text: str
+    surface: str  # "dm" | "group"
+    sent_at: datetime
+
+
 @dataclass(frozen=True, slots=True)
 class Ignore:
     pass
@@ -97,6 +114,7 @@ ParsedUpdate = (
     | DeleteProfileCommand
     | HelpCommand
     | RecommendCommand
+    | IntakeCommand
     | Ignore
 )
 
@@ -107,7 +125,7 @@ def parse_update(update: dict[str, Any]) -> ParsedUpdate:
     if chat_type in GROUP_CHAT_TYPES:
         return _parse_group_message(message, update)
     if chat_type == PRIVATE_CHAT_TYPE:
-        return _parse_private_message(message)
+        return _parse_private_message(message, update)
     return Ignore()
 
 
@@ -129,6 +147,9 @@ def _parse_group_message(
     if _leading_command(message) == "/recommend":
         return _parse_recommend_command(message, surface="group")
 
+    if _leading_command(message) == "/intake":
+        return _parse_intake_command(message, surface="group")
+
     delete_command = _parse_delete_command(message)
     if delete_command is not None:
         return delete_command
@@ -140,47 +161,51 @@ def _parse_group_message(
     return Ignore()
 
 
-def _parse_private_message(message: dict[str, Any]) -> ParsedUpdate:
+def _parse_private_message(
+    message: dict[str, Any],
+    update: dict[str, Any],
+) -> ParsedUpdate:
     command, args = _command_and_args(message)
-    if command is None:
-        return Ignore()
-
     sender = message.get("from") or {}
     user_id = sender.get("id")
-    if user_id is None:
-        return Ignore()
-    user_id = int(user_id)
-    chat_id = int(message["chat"]["id"])
-    display_name = _display_name(sender)
 
-    match command:
-        case "/profile":
-            return ProfileCommand(
-                user_id=user_id,
-                chat_id=chat_id,
-                display_name=display_name,
-                text=args,
-            )
-        case "/context":
-            # Bare /context views the notes; any text is an AI-interpreted edit.
-            if args:
-                return EditContextCommand(
+    if command is not None and user_id is not None:
+        user_id = int(user_id)
+        chat_id = int(message["chat"]["id"])
+        display_name = _display_name(sender)
+        match command:
+            case "/profile":
+                return ProfileCommand(
                     user_id=user_id,
                     chat_id=chat_id,
                     display_name=display_name,
                     text=args,
                 )
-            return ViewContextCommand(user_id=user_id, chat_id=chat_id)
-        case "/recommend":
-            return _parse_recommend_command(message, surface="dm")
-        case "/deleteprofile":
-            return DeleteProfileCommand(user_id=user_id, chat_id=chat_id)
-        case "/start" | "/help":
-            return HelpCommand(
-                user_id=user_id, chat_id=chat_id, display_name=display_name
-            )
-        case _:
-            return Ignore()
+            case "/context":
+                # Bare /context views the notes; any text is an AI-interpreted edit.
+                if args:
+                    return EditContextCommand(
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        display_name=display_name,
+                        text=args,
+                    )
+                return ViewContextCommand(user_id=user_id, chat_id=chat_id)
+            case "/intake":
+                return _parse_intake_command(message, surface="dm")
+            case "/recommend":
+                return _parse_recommend_command(message, surface="dm")
+            case "/deleteprofile":
+                return DeleteProfileCommand(user_id=user_id, chat_id=chat_id)
+            case "/start" | "/help":
+                return HelpCommand(
+                    user_id=user_id, chat_id=chat_id, display_name=display_name
+                )
+
+    # A DM is the person's own one-member group: anything that isn't a private
+    # command (a food photo, /summary, /delete) is parsed and logged exactly as
+    # it would be in a group chat, so the full tracking loop works in the bot DM.
+    return _parse_group_message(message, update)
 
 
 def _parse_recommend_command(
@@ -201,6 +226,28 @@ def _parse_recommend_command(
         display_name=_display_name(sender),
         text=args,
         surface=surface,
+    )
+
+
+def _parse_intake_command(
+    message: dict[str, Any],
+    *,
+    surface: str,
+) -> ParsedUpdate:
+    sender = message.get("from") or {}
+    user_id = sender.get("id")
+    if user_id is None:
+        return Ignore()
+    _, args = _command_and_args(message)
+    return IntakeCommand(
+        user_id=int(user_id),
+        chat_id=int(message["chat"]["id"]),
+        message_id=int(message.get("message_id") or 0),
+        sender_label=sender_label_from(sender),
+        display_name=_display_name(sender),
+        text=args,
+        surface=surface,
+        sent_at=datetime.fromtimestamp(int(message.get("date") or 0), tz=UTC),
     )
 
 
