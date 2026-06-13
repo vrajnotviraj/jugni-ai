@@ -33,6 +33,7 @@ from core.settings import Settings
 from domain.analysis import FoodAnalysis
 from domain.photo import Photo
 from domain.streak import AtRiskUser
+from llm.smart_router import configure_router
 from presenters.streak_nudge import STREAK_NUDGE_PARSE_MODE, format_streak_nudge
 from storage.redis_photo_repository import RedisPhotoRepository
 from storage.redis_profile_repository import RedisProfileRepository
@@ -321,6 +322,10 @@ async def build_world() -> World:
     # Generous retries: eval runs share the project's rate limits with the
     # live bot, so a 429 should back off and continue, not sink the case.
     openai = AsyncOpenAI(api_key=s.openai_api_key, max_retries=5)
+    # Evals route through flex for the ~50% cost saving and tolerate its slower
+    # responses, so the timeout is generous. Health is in-process (redis=None) so a
+    # flex trip during an eval never writes the shared key the live bot reads.
+    configure_router(redis=None, flex_enabled=True, flex_timeout=120.0)
     tg = _Telegram()
     photo_repo = RedisPhotoRepository(redis, timezone=s.timezone)
     profile_repo = RedisProfileRepository(redis)

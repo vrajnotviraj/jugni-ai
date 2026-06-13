@@ -1,4 +1,25 @@
-from openai import AsyncOpenAI
+import logging
+
+from openai import APIStatusError, APITimeoutError, AsyncOpenAI
+
+from llm.smart_router import pick_route, report_unavailable
+
+logger = logging.getLogger(__name__)
+
+
+def _flex_unavailable(exc: APITimeoutError | APIStatusError) -> bool:
+    """True when an error means "flex can't serve this" — so mark flex down.
+
+    Covers the three ways flex bows out: it timed out, it's out of capacity (429),
+    or the model doesn't offer flex at all (400 naming service_tier — a backstop;
+    the model allowlist already keeps unsupported models off flex). Any other
+    status is a real error and must surface unchanged.
+    """
+    if isinstance(exc, APITimeoutError):
+        return True
+    if exc.status_code == 429:
+        return True
+    return exc.status_code == 400 and "service_tier" in str(exc).lower()
 
 
 async def call_responses(
@@ -49,6 +70,44 @@ async def call_responses(
         kwargs["prompt_cache_key"] = cache_key
     if cache_retention:
         kwargs["prompt_cache_retention"] = cache_retention
+
+    # The smart router picks the route: the flex tier when this model supports it
+    # and flex is healthy, else the primary tier. A flex route carries a longer
+    # timeout (slow is fine on the cheap lane). When flex bows out, we mark it down
+    # for 15 minutes and re-raise — we do NOT retry on primary in the same request,
+    # because that would stack flex's timeout on top of the primary call and blow
+    # the webhook's budget. The breaker means only the first call in a 15-minute
+    # window pays this; every later call routes straight to primary. How the raised
+    # error lands is the caller's call: the image/intake tip degrades to its own
+    # fallback and the recommender drops to deterministic options, while the photo
+    # and intake extraction reply "couldn't read that" — the user re-sends and, with
+    # flex now marked down, that attempt runs on primary. (These callers catch the
+    # error and answer 200, so there is no automatic Telegram webhook retry.)
+    route = await pick_route(model)
+    logger.info(
+        "llm route: model=%s tier=%s cache_key=%s",
+        model,
+        route.service_tier or "primary",
+        cache_key,
+    )
+    if route.service_tier is not None:
+        flex_client = client.with_options(timeout=route.timeout)
+        try:
+            response = await flex_client.responses.create(
+                service_tier=route.service_tier, **kwargs
+            )
+            return response.output_text
+        except (APITimeoutError, APIStatusError) as exc:
+            if not _flex_unavailable(exc):
+                raise
+            logger.warning(
+                "flex call failed (cache_key=%s): %r — marking flex down; this "
+                "attempt fails and the retry will use the primary tier",
+                cache_key,
+                exc,
+            )
+            await report_unavailable(route)
+            raise
 
     response = await client.responses.create(**kwargs)
     return response.output_text
