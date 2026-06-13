@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from typing import Any
 
-from domain.analysis import FoodAnalysis
+from domain.analysis import CONFIDENCE_LEVELS, FoodAnalysis
 from domain.photo import Photo, PhotoStatus, StoredPhoto
 
 
@@ -9,6 +10,7 @@ def photo_to_hash(
     photo: Photo,
     day_key: str,
     status: PhotoStatus = PhotoStatus.PENDING,
+    content_hash: str | None = None,
 ) -> dict[str, Any]:
     fields: dict[str, Any] = {
         "telegram_update_id": photo.update_id,
@@ -24,6 +26,8 @@ def photo_to_hash(
         fields["sender_id"] = photo.sender_id
     if photo.file_unique_id is not None:
         fields["file_unique_id"] = photo.file_unique_id
+    if content_hash is not None:
+        fields["content_hash"] = content_hash
     if photo.caption is not None:
         fields["caption"] = photo.caption
     return fields
@@ -43,6 +47,9 @@ def analysis_to_fields(analysis: FoodAnalysis) -> dict[str, Any]:
         "fibre_g": analysis.fibre_g,
         "added_sugar_g": analysis.added_sugar_g,
         "sat_fat_g": analysis.sat_fat_g,
+        # JSON-encoded so the per-item breakdown survives a reload and a reused
+        # duplicate reply shows the same "What's in it" card as the first one.
+        "items": json.dumps(list(analysis.items)),
     }
 
 
@@ -83,6 +90,38 @@ def photo_from_hash(raw: dict[str, Any]) -> StoredPhoto | None:
     )
 
 
+def analysis_from_hash(raw: dict[str, Any]) -> FoodAnalysis | None:
+    if not raw or raw.get("status") != PhotoStatus.ESTIMATED.value:
+        return None
+
+    calories_raw = raw.get("calories")
+    if calories_raw in (None, ""):
+        return None
+    try:
+        calories = int(calories_raw)
+    except (TypeError, ValueError):
+        return None
+
+    confidence = raw.get("confidence")
+    if confidence not in CONFIDENCE_LEVELS:
+        confidence = "medium"
+
+    return FoodAnalysis(
+        dish=raw.get("dish", "Unknown dish"),
+        calories=calories,
+        confidence=confidence,
+        tip=raw.get("tip", ""),
+        is_food=raw.get("is_food") == "1",
+        protein_g=_macro_int(raw.get("protein_g")),
+        carb_g=_macro_int(raw.get("carb_g")),
+        fat_g=_macro_int(raw.get("fat_g")),
+        fibre_g=_macro_int(raw.get("fibre_g")),
+        added_sugar_g=_macro_int(raw.get("added_sugar_g")),
+        sat_fat_g=_macro_int(raw.get("sat_fat_g")),
+        items=_decode_items(raw.get("items")),
+    )
+
+
 def _sender_id(value: Any) -> int | None:
     if value in (None, ""):
         return None
@@ -99,6 +138,20 @@ def _macro_int(value: Any) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
+
+
+def _decode_items(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, str) or not value:
+        return ()
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        item.strip() for item in data if isinstance(item, str) and item.strip()
+    )
 
 
 def _parse_sent_at(value: str | None) -> datetime | None:

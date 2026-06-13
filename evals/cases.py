@@ -22,6 +22,7 @@ PHOTOS = Path(__file__).parent / "photos"
 # Each rule is one clear, self-contained statement so the judge cannot misread it.
 TIP = "The tip is kind (not preachy) and gives a concrete suggestion that fits this specific dish, not a generic platitude."
 VEG = "The tip never recommends eggs, meat, or fish as a food to eat or add (the person is vegetarian and eggless); suggesting they skip or replace such foods is fine."
+SPLIT_TIP = "The tip is grounded in the visible plate, respects the user's dietary facts, and does not sound like a generic protein or light-next-meal template."
 SUMMARY = "The text describes one person's day with at least one strength and one gap, in plain words, and quotes no raw calorie or gram numbers."
 
 # Streak rules. The reply rules embed the exact day-count the seeded history
@@ -117,13 +118,17 @@ class Day:
         analysis = result["analysis"]
         if not analysis["is_food"]:
             return
+        tip = (analysis["tip"] or "").strip()
         if show:
             self._say(
                 f"{user} posts at {when}: {analysis['dish']} · {analysis['calories']} kcal"
             )
-            print(f"        tip: {analysis['tip']}")
+            print(f"        tip: {tip or '(no tip)'}")
+        # Every food plate should get a coaching line now; judge even an empty
+        # tip so a regression that drops the line fails the grader loudly instead
+        # of slipping past it.
         if judge:
-            self.to_judge.append((f"tip · {analysis['dish']}", analysis["tip"], judge))
+            self.to_judge.append((f"tip · {analysis['dish']}", tip, judge))
         if judge_reply:
             reply = _plain(result.get("reply_text", ""))
             self.to_judge.append((f"reply · {analysis['dish']}", reply, judge_reply))
@@ -263,6 +268,25 @@ async def case_context(day: Day) -> None:
     await day.context("@diya", "I always take whole milk in my chai and coffee")
     await day.post("@diya", day.snack(), judge=TIP)
     await day.post("@diya", day.meal(), judge=TIP)
+
+
+async def case_image_split(day: Day) -> None:
+    """A personalized photo run exercises split extraction and text-only coaching."""
+    from analyzers.image.coaching import FOOD_COACHING_SYSTEM_PROMPT
+    from analyzers.image.extraction import FOOD_EXTRACTION_SYSTEM_PROMPT
+
+    day._say(
+        "split analyzer expected calls: food photo = 1 vision extraction + 1 text "
+        "coaching (the coaching model decides the angle itself); non-food = 1 vision extraction"
+    )
+    day._say(
+        "prompt chars: "
+        f"extraction={len(FOOD_EXTRACTION_SYSTEM_PROMPT)}, "
+        f"coaching={len(FOOD_COACHING_SYSTEM_PROMPT)}"
+    )
+    await day.profile("@aarav", "vegetarian, no eggs, want to lose fat")
+    await day.seed_dish("@aarav", "Poha with peanuts", 350, protein=9, carb=55)
+    await day.post("@aarav", day.meal(), judge=SPLIT_TIP)
 
 
 async def case_delete(day: Day) -> None:
@@ -499,6 +523,7 @@ async def case_rec_label_collision(day: Day) -> None:
 CASES = {
     "profile": case_profile,
     "context": case_context,
+    "image_split": case_image_split,
     "delete": case_delete,
     "day": case_day,
     "streak_reply": case_streak_reply,

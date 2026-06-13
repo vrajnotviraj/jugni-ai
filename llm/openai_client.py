@@ -8,7 +8,9 @@ async def call_responses(
     system: str,
     user: str,
     image_data_url: str | None = None,
+    image_detail: str = "high",
     tools: list[dict[str, object]] | None = None,
+    response_format: dict[str, object] | None = None,
     cache_key: str | None = None,
     cache_retention: str | None = "24h",
 ) -> str:
@@ -24,7 +26,7 @@ async def call_responses(
             {
                 "type": "input_image",
                 "image_url": image_data_url,
-                "detail": "high",
+                "detail": image_detail,
             }
         )
 
@@ -37,6 +39,8 @@ async def call_responses(
     }
     if tools:
         kwargs["tools"] = tools
+    if response_format:
+        kwargs["text"] = {"format": response_format}
     # `prompt_cache_key` makes routing sticky so same-type requests land on the same
     # warm engine; `prompt_cache_retention="24h"` keeps the prefix cached for a day
     # instead of the default ~5-60 min in-memory window, which matters for a bot that

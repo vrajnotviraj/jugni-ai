@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,11 @@ from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
 logger = logging.getLogger(__name__)
+
+ANALYSING_REPLY = "🔍 Analysing your meal…"
+ANALYSIS_FAILED_REPLY = (
+    "⚠️ Couldn't read that one. Try a clearer, well-lit photo of the plate."
+)
 
 
 async def handle_photo(
@@ -43,20 +49,38 @@ async def handle_photo(
     user_zone = profile.zone(timezone) if profile else timezone
     day_key = day_key_for_datetime(photo.sent_at, user_zone)
 
-    if not await repo.reserve(photo, day_key=day_key):
+    content_hash = _content_hash(image_bytes) if image_bytes is not None else None
+    duplicate = await repo.duplicate_analysis(
+        photo, day_key=day_key, content_hash=content_hash
+    )
+    if duplicate is not None:
+        logger.info(
+            "photo duplicate reused chat=%s msg=%s sender=%s",
+            photo.chat_id,
+            photo.message_id,
+            photo.sender_label,
+        )
+        await _reply_with_analysis(
+            repo=repo,
+            telegram=telegram,
+            photo=photo,
+            analysis=duplicate,
+            day_key=day_key,
+            eaten_at=None,
+            target=calorie_target(profile),
+            protein_today_g=None,
+            protein_target_g=protein_target_g(profile),
+        )
+        return duplicate
+
+    if not await repo.reserve(photo, day_key=day_key, content_hash=content_hash):
         logger.info("photo already stored, skipping msg=%s", photo.message_id)
         return None
 
-    logger.info(
-        "analysing photo chat=%s msg=%s sender=%s",
-        photo.chat_id,
-        photo.message_id,
-        photo.sender_label,
-    )
-
-    image_bytes, media_type = await _ensure_image_bytes(
-        telegram, photo, image_bytes, media_type
-    )
+    # Acknowledge the photo immediately, then edit this same message into the
+    # finished card once analysis returns — so the chat shows progress instead
+    # of silence during the vision call.
+    placeholder_id = await _send_placeholder(telegram, photo)
 
     eaten_at = photo.sent_at.astimezone(user_zone).strftime("%H:%M")
     # The eaten-at time is only meaningful (and only shown to the user) when they
@@ -89,11 +113,23 @@ async def handle_photo(
         bool(prior_meals),
     )
 
+    logger.info(
+        "analysing photo chat=%s msg=%s sender=%s",
+        photo.chat_id,
+        photo.message_id,
+        photo.sender_label,
+    )
+
+    image_bytes, media_type = await _ensure_image_bytes(
+        telegram, photo, image_bytes, media_type
+    )
+
     try:
         analysis = await image_estimator(
             image_bytes,
             media_type,
             photo.caption,
+            sender_label=photo.sender_label,
             eaten_at=eaten_at,
             prior_meals=prior_meals,
             personal_context=personal_context,
@@ -108,6 +144,7 @@ async def handle_photo(
             photo.message_id,
         )
         await repo.mark_failed(photo, str(error))
+        await _deliver(telegram, photo, ANALYSIS_FAILED_REPLY, placeholder_id)
         return None
 
     logger.info(
@@ -120,25 +157,61 @@ async def handle_photo(
     )
 
     await repo.complete(photo, analysis)
+    # Reinforce the streak only on the first meal of the local day (KTD4); `prior`
+    # was read before this photo was stored, so empty means this is the first.
+    streak_line = await _streak_line(repo, photo, day_key) if not prior else None
+    await _reply_with_analysis(
+        repo=repo,
+        telegram=telegram,
+        photo=photo,
+        analysis=analysis,
+        day_key=day_key,
+        eaten_at=eaten_at_label,
+        target=target,
+        protein_today_g=protein_so_far + max(0, analysis.protein_g),
+        protein_target_g=protein_target,
+        streak_line=streak_line,
+        placeholder_id=placeholder_id,
+    )
+    return analysis
+
+
+async def _reply_with_analysis(
+    *,
+    repo: PhotoRepository,
+    telegram: TelegramBotApi,
+    photo: Photo,
+    analysis: FoodAnalysis,
+    day_key: str,
+    eaten_at: str | None,
+    target: int | None,
+    protein_today_g: int | None,
+    protein_target_g: int | None,
+    streak_line: str | None = None,
+    placeholder_id: int | None = None,
+) -> None:
     # Total for the sender's own local day, matching how the meal was bucketed.
     daily_total = await repo.daily_user_calories(
         chat_id=photo.chat_id, day_key=day_key, sender_label=photo.sender_label
     )
-    # Reinforce the streak only on the first meal of the local day (KTD4); `prior`
-    # was read before this photo was stored, so empty means this is the first.
-    streak_line = await _streak_line(repo, photo, day_key) if not prior else None
+    if protein_today_g is None and protein_target_g:
+        photos = await repo.estimated_photos_for_user_day(
+            chat_id=photo.chat_id,
+            day_key=day_key,
+            sender_label=photo.sender_label,
+        )
+        protein_today_g = sum(stored.protein_g for stored in photos)
     reply = format_photo_reply(
         photo.sender_label,
         analysis,
         daily_total,
         streak_line=streak_line,
-        eaten_at=eaten_at_label,
+        eaten_at=eaten_at,
         calorie_target=target,
-        protein_today_g=protein_so_far + max(0, analysis.protein_g),
-        protein_target_g=protein_target,
+        protein_today_g=protein_today_g,
+        protein_target_g=protein_target_g,
     )
-    await _safely_reply(telegram, photo, reply, daily_total)
-    return analysis
+    await _deliver(telegram, photo, reply, placeholder_id)
 
 
 async def _streak_line(
@@ -200,25 +273,69 @@ async def _ensure_image_bytes(
     return image_bytes, media_type
 
 
-async def _safely_reply(
+def _content_hash(image_bytes: bytes) -> str:
+    return hashlib.sha256(image_bytes).hexdigest()
+
+
+async def _send_placeholder(telegram: TelegramBotApi, photo: Photo) -> int | None:
+    # Best-effort: if the ack fails we just fall back to sending the card fresh.
+    try:
+        return await telegram.send_message(
+            chat_id=photo.chat_id,
+            text=ANALYSING_REPLY,
+            reply_to_message_id=photo.message_id,
+        )
+    except Exception:
+        logger.exception(
+            "placeholder send failed chat=%s msg=%s", photo.chat_id, photo.message_id
+        )
+        return None
+
+
+async def _deliver(
     telegram: TelegramBotApi,
     photo: Photo,
-    reply: str,
-    daily_total: int,
+    text: str,
+    placeholder_id: int | None,
 ) -> None:
+    """Show the finished card: edit the placeholder in place, or send fresh when
+    there was no placeholder (duplicate replies) or the edit fails."""
+    if placeholder_id is not None:
+        try:
+            await telegram.edit_message_text(
+                chat_id=photo.chat_id,
+                message_id=placeholder_id,
+                text=text,
+                parse_mode=PHOTO_REPLY_PARSE_MODE,
+            )
+            logger.info(
+                "replied chat=%s msg=%s sender=%s edited=true",
+                photo.chat_id,
+                photo.message_id,
+                photo.sender_label,
+            )
+            return
+        except Exception:
+            # The placeholder edit failed (deleted message, stale id); fall back
+            # to a fresh card so the reply is never silently dropped.
+            logger.exception(
+                "placeholder edit failed chat=%s msg=%s — sending fresh card",
+                photo.chat_id,
+                photo.message_id,
+            )
+
     try:
         await telegram.send_message(
             chat_id=photo.chat_id,
-            text=reply,
+            text=text,
             reply_to_message_id=photo.message_id,
             parse_mode=PHOTO_REPLY_PARSE_MODE,
         )
         logger.info(
-            "replied chat=%s msg=%s sender=%s total=%s",
+            "replied chat=%s msg=%s sender=%s edited=false",
             photo.chat_id,
             photo.message_id,
             photo.sender_label,
-            daily_total,
         )
     except Exception:
         logger.exception(

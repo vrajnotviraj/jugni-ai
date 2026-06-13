@@ -62,15 +62,38 @@ def format_photo_reply(
         nutrition.append(protein_line)
     nutrition.append(confidence_line)
 
+    # The whole reply is one message: identity, the numbers, the collapsible
+    # breakdown that explains the calorie total, an optional tip, then the
+    # streak shout-out. Each is its own blank-line-separated group.
     groups = [identity, nutrition]
+    breakdown = _breakdown_block(analysis.items)
+    if breakdown:
+        groups.append([breakdown])
+    tip = _tip_block(analysis.tip)
+    if tip:
+        groups.append([tip])
     if streak_line:
         groups.append([streak_line])
 
-    tip = (analysis.tip or "").strip()
-    if tip:
-        groups.append([f"<blockquote>{escape(tip, quote=False)}</blockquote>"])
-
     return "\n\n".join("\n".join(group) for group in groups)
+
+
+def _tip_block(tip: str) -> str | None:
+    tip = (tip or "").strip()
+    if not tip:
+        return None
+    return f"💡 <b>Tip</b>\n{escape(tip, quote=False)}"
+
+
+def _breakdown_block(items: tuple[str, ...]) -> str | None:
+    """The per-item calorie breakdown as a collapsible quote, so the total is
+    transparent without crowding the card. Telegram shows the first line and
+    expands the rest on tap."""
+    items = tuple(item for item in items if item.strip())
+    if not items:
+        return None
+    lines = "\n".join(f"• {escape(item, quote=False)}" for item in items)
+    return f"<blockquote expandable>What's in it\n{lines}</blockquote>"
 
 
 # Milestone copy at 3/7/14/30 (KTD7); other lengths get a quiet count.

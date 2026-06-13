@@ -28,7 +28,7 @@ from llm.openai_client import call_responses
 
 # One cheap-but-real case per feature area, so the default run finishes in a
 # couple of minutes and stays well under the project's shared rate limits.
-DEFAULT_CASES = ("rec_fallback", "rec_request", "rec_veg", "profile")
+DEFAULT_CASES = ("rec_fallback", "rec_request", "rec_veg", "image_split")
 
 _JUDGE_SYSTEM = (
     "You grade a food bot's text against one rule. Be strict; if unsure, fail. "
