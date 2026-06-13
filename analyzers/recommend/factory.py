@@ -9,4 +9,8 @@ def build_recommender(
     client: AsyncOpenAI | None = None,
 ) -> Recommender:
     openai_client = client or AsyncOpenAI(api_key=settings.openai_api_key)
-    return Recommender(client=openai_client, model=settings.openai_model)
+    return Recommender(
+        client=openai_client,
+        model=settings.openai_model,
+        youtube_api_key=settings.youtube_api_key,
+    )

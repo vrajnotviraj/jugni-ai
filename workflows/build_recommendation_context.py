@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core.dates import next_meal_slot, today_day_key
+from core.dates import meal_period_for_hour, next_meal_slot, today_day_key
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.day import DayMacros
 from domain.photo import StoredPhoto
@@ -73,8 +73,13 @@ async def build_recommendation_context(
     )
     gaps = macro_gaps(macros, today_calories, protein_target)
 
+    # No explicit ask: plan the meal for this time of day, unless they have
+    # already eaten it today — then round it off with a complementary snack or
+    # light dessert rather than proposing a second dinner.
     explicit_slot = slot is not None
-    resolved_slot = slot or next_meal_slot(zone)
+    meal_slot = next_meal_slot(zone)
+    after_meal = not explicit_slot and _already_ate(today, meal_slot, zone)
+    resolved_slot = slot or ("snack" if after_meal else meal_slot)
 
     is_group = surface == "group"
     dietary = await dietary_facts(profile, profile_repo, user_id, public=is_group)
@@ -90,7 +95,10 @@ async def build_recommendation_context(
         slot=resolved_slot,
         slot_is_explicit=explicit_slot,
         user_request=user_request,
-        time_context=_time_line(zone, resolved_slot, explicit=explicit_slot),
+        time_context=_time_line(
+            zone, resolved_slot, explicit=explicit_slot,
+            after_meal_slot=meal_slot if after_meal else None,
+        ),
         # The group surface gets the goal's direction in the user's own words,
         # never the derived calorie figure goal_summary appends.
         goal=(profile.goal if profile else None)
@@ -148,7 +156,23 @@ def _remaining(target: int | None, consumed: int) -> int | None:
     return max(MIN_MEAL_KCAL, target - consumed)
 
 
-def _time_line(zone: ZoneInfo, slot: str, *, explicit: bool) -> str:
+def _already_ate(photos: list[StoredPhoto], meal_slot: str, zone: ZoneInfo) -> bool:
+    """Whether a dish was already logged in ``meal_slot``'s time window today."""
+    return any(
+        p.dish
+        and p.sent_at
+        and meal_period_for_hour(p.sent_at.astimezone(zone).hour) == meal_slot
+        for p in photos
+    )
+
+
+def _time_line(
+    zone: ZoneInfo,
+    slot: str,
+    *,
+    explicit: bool,
+    after_meal_slot: str | None,
+) -> str:
     """The clock context for the prompt; never contradicts an explicit ask (R17)."""
     now = datetime.now(zone)
     line = f"It is {now.strftime('%H:%M')} in the person's local time."
@@ -157,12 +181,19 @@ def _time_line(zone: ZoneInfo, slot: str, *, explicit: bool) -> str:
             f"{line} They explicitly asked for a {slot} suggestion; "
             "honour it at this hour."
         )
+    if after_meal_slot:
+        return (
+            f"{line} They have already eaten {after_meal_slot} today, so suggest a "
+            "snack or light dessert to round it off rather than another full meal, "
+            "shaped by the day's open macro gap."
+        )
     return f"{line} If the user request is vague, the fallback meal slot is {slot}."
 
 
 def _format_meals(photos: list[StoredPhoto], zone: ZoneInfo) -> str:
     parts = []
-    for p in photos:
+    # Chronological so the list ends on the meal they ate most recently.
+    for p in sorted(photos, key=lambda p: p.sent_at.timestamp() if p.sent_at else 0.0):
         if not p.dish:
             continue
         time_label = p.sent_at.astimezone(zone).strftime("%H:%M ") if p.sent_at else ""
