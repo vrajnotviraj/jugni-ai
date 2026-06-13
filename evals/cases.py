@@ -531,7 +531,10 @@ async def case_rec_today_only(day: Day) -> None:
     from workflows.build_recommendation_context import build_recommendation_context
 
     world = day._world
-    await day.seed_dish("@aarav", "Dal tadka with roti and sabzi", 500, days_ago=1)
+    # Two eating-days back so the seed stays in the past at any clock hour: a
+    # noon meal "one day ago" still shares the current eating day when the case
+    # runs before the DAY_START_HOUR (4 AM) rollover.
+    await day.seed_dish("@aarav", "Dal tadka with roti and sabzi", 500, days_ago=2)
     context = await build_recommendation_context(
         user_id=day._id("@aarav"),
         sender_label="@aarav",
