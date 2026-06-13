@@ -124,6 +124,19 @@ class TelegramBotApi:
 
         await self._call("editMessageText", payload)
 
+    async def delete_message(self, chat_id: int, message_id: int) -> None:
+        """Remove a message the bot sent — e.g. clear an orphaned placeholder."""
+        if self._dry_run:
+            print(
+                f"\n[DRY-RUN telegram] delete chat_id={chat_id} "
+                f"message_id={message_id}\n"
+            )
+            return
+
+        await self._call(
+            "deleteMessage", {"chat_id": chat_id, "message_id": message_id}
+        )
+
     async def send_document(
         self,
         chat_id: int,

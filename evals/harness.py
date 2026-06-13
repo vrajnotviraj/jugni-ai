@@ -84,6 +84,9 @@ class _Telegram:
         if index is not None:
             self.sent[index] = text
 
+    async def delete_message(self, *_: object, **__: object) -> None:
+        pass
+
     async def send_document(self, *_: object, **__: object) -> None:
         pass
 

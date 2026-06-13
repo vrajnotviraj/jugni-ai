@@ -84,12 +84,12 @@ async def handle_intake(
     protein_so_far = sum(stored.protein_g for stored in prior)
 
     logger.info(
-        "intake chat=%s msg=%s sender=%s has_profile=%s text=%r",
+        "intake chat=%s msg=%s sender=%s has_profile=%s text_len=%d",
         command.chat_id,
         command.message_id,
         command.sender_label,
         profile is not None,
-        text,
+        len(text),
     )
 
     try:
@@ -133,6 +133,10 @@ async def handle_intake(
 
     if not await repo.reserve(photo, day_key=day_key):
         logger.info("intake already stored, skipping msg=%s", command.message_id)
+        # The original processing of this message already replied; clear the
+        # placeholder this duplicate run left behind so no "Looking up your
+        # meal…" message lingers.
+        await _remove_placeholder(telegram, command, placeholder_id)
         return None
     await repo.complete(photo, analysis)
 
@@ -208,6 +212,27 @@ async def _send_placeholder(
             command.message_id,
         )
         return None
+
+
+async def _remove_placeholder(
+    telegram: TelegramBotApi,
+    command: IntakeCommand,
+    placeholder_id: int | None,
+) -> None:
+    """Delete the 'Looking up your meal…' placeholder when a branch returns
+    without a reply to edit into it."""
+    if placeholder_id is None:
+        return
+    try:
+        await telegram.delete_message(
+            chat_id=command.chat_id, message_id=placeholder_id
+        )
+    except Exception:
+        logger.exception(
+            "intake placeholder cleanup failed chat=%s msg=%s",
+            command.chat_id,
+            command.message_id,
+        )
 
 
 async def _deliver(
