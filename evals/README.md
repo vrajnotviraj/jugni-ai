@@ -32,6 +32,7 @@ the **filename becomes the caption** (e.g. `m_palak paneer with rice.jpg`).
 | --- | --- |
 | `profile` | one user sets a vegetarian fat-loss profile, then posts photos — tips must fit the diet |
 | `context` | one user adds a `whole milk` context note, then posts photos |
+| `image_split` | one user with profile context and a prior meal posts a photo — extraction and coaching are graded separately by call shape and tip quality |
 | `delete`  | post photos, then delete one via the meals route — the total recomputes |
 | `day`     | a few people post (one on a profile), then build and grade the daily summary |
 | `streak_reply` | seed 4 prior days, post today — the reply shows a 5-day streak; a second post does not repeat it |
@@ -39,6 +40,11 @@ the **filename becomes the caption** (e.g. `m_palak paneer with rice.jpg`).
 | `streak_grace` | seed days around a single gap — the streak survives (never-miss-twice) |
 | `streak_summary` | two people with seeded histories post — the summary shows each streak |
 | `streak_nudge` | seed an at-risk user (logged yesterday, not today) — the evening nudge names them, then goes silent once they log |
+
+`image_split` prints prompt character counts and the expected call shape: normal
+food photos use one vision extraction call plus one text-only coaching call;
+non-food photos stop after extraction. Exact token cost is model-dependent, so
+the eval records shape rather than asserting price.
 
 The `streak_*` cases seed prior-day activity directly (no vision call), since the
 upload route always stamps posts with today. `day.seed(user, days_ago=[...])`

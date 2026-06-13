@@ -56,6 +56,7 @@ class _Telegram:
         # The reply_markup of each sent message (None for plain messages), so
         # cases can assert on the /recommend slot keyboard.
         self.markups: list[dict | None] = []
+        self._next_id = 1000
 
     async def send_message(
         self,
@@ -63,9 +64,20 @@ class _Telegram:
         text: str,
         reply_markup: dict | None = None,
         **_: object,
-    ) -> None:
+    ) -> int:
         self.sent.append(text)
         self.markups.append(reply_markup)
+        self._next_id += 1
+        return self._next_id
+
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, **_: object
+    ) -> None:
+        # The placeholder→edit flow overwrites the message in place; mirror that
+        # so `sent[-1]` reflects the finished card, not the "Analysing…" stub.
+        index = message_id - 1001
+        if 0 <= index < len(self.sent):
+            self.sent[index] = text
 
     async def send_document(self, *_: object, **__: object) -> None:
         pass

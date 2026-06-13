@@ -7,6 +7,8 @@ name = "food-summary-bot"
 version = "0.1.0"
 description = "Telegram group food photo calorie summary bot."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -59,7 +61,8 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"analyzers/image/prompts.py" = ["E501"]
+"analyzers/image/extraction/prompts.py" = ["E501"]
+"analyzers/image/coaching/prompts.py" = ["E501"]
 "analyzers/summary/prompts.py" = ["E501"]
 "analyzers/profile/prompts.py" = ["E501"]
 "analyzers/context/prompts.py" = ["E501"]

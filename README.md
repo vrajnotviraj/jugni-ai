@@ -30,13 +30,13 @@ The summary pulls everyone who posted food that day, totals their calories, chec
 
 1. Add the bot to your Telegram group.
 2. People post meal photos in the group.
-3. The bot analyses each photo with OpenAI vision.
+3. The bot extracts visible nutrition facts with OpenAI vision, then writes the tip with a text-only coaching pass.
 4. Redis stores the meal, calories, sender, time, and tip.
 5. `/summary` posts the daily team ranking.
 
 That loop is the product.
 
-The bot is built for Indian food, especially Gujarati home food, but it handles regular restaurant and Western meals too.
+The bot is built for Indian food, especially Gujarati home food, but it handles regular restaurant and Western meals too. Photo calories are still estimates: captions and packaged labels help, but hidden oil, ghee, sugar, and portion size can move the number.
 
 ## What the bot posts
 
@@ -58,7 +58,7 @@ For the daily summary:
 - short nutrition note per person
 - each person's current logging streak (🔥)
 
-Calories are photo estimates. Good enough for accountability, weak evidence for anything clinical.
+Calories are photo estimates. Good enough for accountability, weak evidence for anything clinical. Tips are coaching nudges, not medical advice.
 
 ## What comes next
 

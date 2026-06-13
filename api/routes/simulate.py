@@ -114,7 +114,15 @@ class _CapturingTelegram:
         text: str,
         reply_markup: dict | None = None,
         **_kwargs: object,
-    ) -> None:
+    ) -> int:
         self.replies.append(
             {"chat_id": chat_id, "text": text, "reply_markup": reply_markup}
         )
+        return len(self.replies)  # 1-based id == index + 1
+
+    async def edit_message_text(
+        self, chat_id: int, message_id: int, text: str, **_kwargs: object
+    ) -> None:
+        index = message_id - 1
+        if 0 <= index < len(self.replies):
+            self.replies[index]["text"] = text

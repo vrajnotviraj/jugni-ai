@@ -7,6 +7,7 @@ from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
 from storage._hash_codec import (
+    analysis_from_hash,
     analysis_to_fields,
     failure_to_fields,
     photo_from_hash,
@@ -26,7 +27,13 @@ class RedisPhotoRepository:
         self._redis = redis
         self._timezone = timezone
 
-    async def reserve(self, photo: Photo, *, day_key: str | None = None) -> bool:
+    async def reserve(
+        self,
+        photo: Photo,
+        *,
+        day_key: str | None = None,
+        content_hash: str | None = None,
+    ) -> bool:
         photo_key = _photo_key(photo.chat_id, photo.message_id)
         if await self._redis.exists(photo_key):
             return False
@@ -35,13 +42,36 @@ class RedisPhotoRepository:
         # we fall back to the app-timezone bucket only when it does not (e.g. a
         # senderless upload or a caller without profile access).
         day_key = day_key or self._day_key(photo)
-        await self._redis.hset(photo_key, mapping=photo_to_hash(photo, day_key))
+        await self._redis.hset(
+            photo_key, mapping=photo_to_hash(photo, day_key, content_hash=content_hash)
+        )
         await self._redis.sadd(_chat_day_key(photo.chat_id, day_key), photo.message_id)
         await self._redis.sadd(
             _user_day_key(photo.chat_id, day_key, photo.sender_label),
             photo.message_id,
         )
         return True
+
+    async def duplicate_analysis(
+        self,
+        photo: Photo,
+        *,
+        day_key: str,
+        content_hash: str | None = None,
+    ) -> FoodAnalysis | None:
+        if not photo.file_unique_id and not content_hash:
+            return None
+
+        message_ids = await self._redis.smembers(
+            _user_day_key(photo.chat_id, day_key, photo.sender_label)
+        )
+        for message_id in message_ids:
+            raw = await self._redis.hgetall(_photo_key(photo.chat_id, int(message_id)))
+            if _same_photo(raw, photo, content_hash):
+                analysis = analysis_from_hash(raw)
+                if analysis is not None:
+                    return analysis
+        return None
 
     async def complete(self, photo: Photo, analysis: FoodAnalysis) -> None:
         await self._redis.hset(
@@ -231,6 +261,16 @@ def _chat_day_key(chat_id: int, day_key: str) -> str:
 
 def _user_day_key(chat_id: int, day_key: str, sender_label: str) -> str:
     return f"chat:{chat_id}:day:{day_key}:user:{sender_label}:messages"
+
+
+def _same_photo(
+    raw: dict[str, object],
+    photo: Photo,
+    content_hash: str | None,
+) -> bool:
+    if photo.file_unique_id and raw.get("file_unique_id") == photo.file_unique_id:
+        return True
+    return bool(content_hash and raw.get("content_hash") == content_hash)
 
 
 def _safe_int(value: object) -> int:

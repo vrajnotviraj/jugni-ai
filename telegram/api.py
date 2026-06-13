@@ -56,7 +56,9 @@ class TelegramBotApi:
         parse_mode: str | None = None,
         reply_markup: dict[str, Any] | None = None,
         link_preview_options: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> int | None:
+        """Send a message and return its ``message_id`` (None in dry-run), so a
+        caller can later edit it in place via :meth:`edit_message_text`."""
         if self._dry_run:
             print(
                 f"\n[DRY-RUN telegram] chat_id={chat_id} "
@@ -66,7 +68,7 @@ class TelegramBotApi:
             logger.info(
                 "dry-run send to chat=%s reply_to=%s", chat_id, reply_to_message_id
             )
-            return
+            return None
 
         if chat_id == 0:
             raise TelegramApiError(
@@ -87,7 +89,40 @@ class TelegramBotApi:
                 "allow_sending_without_reply": True,
             }
 
-        await self._call("sendMessage", payload)
+        body = await self._call("sendMessage", payload)
+        return body.get("result", {}).get("message_id")
+
+    async def edit_message_text(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        parse_mode: str | None = None,
+        reply_markup: dict[str, Any] | None = None,
+        link_preview_options: dict[str, Any] | None = None,
+    ) -> None:
+        """Replace the text of a message the bot already sent (e.g. turn an
+        'Analysing…' placeholder into the finished reply)."""
+        if self._dry_run:
+            print(
+                f"\n[DRY-RUN telegram] edit chat_id={chat_id} "
+                f"message_id={message_id} parse_mode={parse_mode}\n{text}\n"
+            )
+            return
+
+        payload: dict[str, object] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        if link_preview_options is not None:
+            payload["link_preview_options"] = link_preview_options
+
+        await self._call("editMessageText", payload)
 
     async def send_document(
         self,

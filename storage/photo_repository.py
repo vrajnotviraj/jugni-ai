@@ -5,13 +5,29 @@ from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
 
 
 class PhotoRepository(Protocol):
-    async def reserve(self, photo: Photo, *, day_key: str | None = None) -> bool:
+    async def reserve(
+        self,
+        photo: Photo,
+        *,
+        day_key: str | None = None,
+        content_hash: str | None = None,
+    ) -> bool:
         """Reserve storage for an incoming photo. Return False if already stored.
 
         ``day_key`` lets the caller bucket the meal into a specific local day
         (e.g. computed in the sender's own timezone); when omitted the repository
         falls back to the app-timezone day.
+        ``content_hash`` lets local/manual uploads dedupe exact same image bytes.
         """
+
+    async def duplicate_analysis(
+        self,
+        photo: Photo,
+        *,
+        day_key: str,
+        content_hash: str | None = None,
+    ) -> FoodAnalysis | None:
+        """Return a prior analysis for the same image from this sender/day."""
 
     async def complete(self, photo: Photo, analysis: FoodAnalysis) -> None:
         """Save a successful food analysis for a reserved photo."""
