@@ -9,6 +9,8 @@ private chats, and only /summary and /delete in groups.
 # (token, short description) — order is the order shown in the client menu.
 # Private (DM) menu: the profile and help commands the bot handles in 1:1 chats.
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("intake", "Log a meal in words, e.g. 2 rotli and a katori of dal"),
+    ("summary", "Post today's calorie summary for this chat"),
     ("profile", "View your profile, or set it in plain words"),
     ("context", "See your notes, or 'add'/'update' to change them"),
     ("recommend", "Suggest your next meal from your day and goal"),
@@ -20,6 +22,7 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
 # Group menu: the commands the bot handles in group/supergroup chats.
 GROUP_COMMANDS: tuple[tuple[str, str], ...] = (
     ("summary", "Post today's calorie summary for this group"),
+    ("intake", "Log a meal in words, e.g. 2 rotli and a katori of dal"),
     ("recommend", "Suggest your next meal from your day and goal"),
     ("delete", "Reply to a food photo to remove it from today's tally"),
 )

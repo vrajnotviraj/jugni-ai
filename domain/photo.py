@@ -47,6 +47,34 @@ class Photo:
         )
 
     @classmethod
+    def from_text_intake(
+        cls,
+        *,
+        chat_id: int,
+        message_id: int,
+        sender_id: int | None,
+        sender_label: str,
+        text: str,
+        sent_at: datetime,
+    ) -> "Photo":
+        # A typed meal (/intake) reuses the photo storage + reply pipeline. There
+        # is no file, so file_id is synthetic and file_unique_id is None (which
+        # disables image dedup); message_id is the real /intake message so the
+        # reply threads back to it and storage keys on it like any other meal.
+        # The typed words ride along as the caption, the strongest dish hint.
+        return cls(
+            update_id=0,
+            chat_id=chat_id,
+            message_id=message_id,
+            sender_id=sender_id,
+            sender_label=sender_label,
+            sent_at=sent_at,
+            file_id=f"text:{message_id}",
+            file_unique_id=None,
+            caption=text,
+        )
+
+    @classmethod
     def from_local_upload(
         cls,
         *,

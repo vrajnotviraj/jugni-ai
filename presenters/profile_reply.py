@@ -71,7 +71,8 @@ def format_profile_new_user(display_name: str) -> str:
             f"👋 Hi {escape(name, quote=False)}, you do not have a profile yet.",
             "Set it in plain words, for example:",
             "<code>/profile 5ft9, 72 kg, vegetarian, want to lose fat</code>",
-            "Then I will tailor your photo estimates to you.",
+            "Then I will tailor your estimates to you. You can log meals right "
+            "here too: send a food photo or use <code>/intake</code>.",
         ]
     )
 
@@ -128,12 +129,16 @@ def format_help(display_name: str) -> str:
         [
             f"👋 Hi {escape(name, quote=False)}, here is what I can do in this chat:",
             "",
+            "📸 <b>Send a food photo</b> — I estimate the calories and log it.",
+            "<b>/intake</b> — log a meal in words; I look up the calories.",
+            "  e.g. <code>/intake 2 rotli and a katori of dal</code>",
+            "<b>/summary</b> — today's calorie total for this chat.",
+            "<b>/recommend</b> — suggest your next meal from your day and goal.",
             "<b>/profile</b> — view your profile, or set it in plain words.",
             "  e.g. <code>/profile 5ft9, 72 kg, vegetarian, lose fat</code>",
             "<b>/context</b> — see your standing notes I respect in estimates.",
             "  add or change one by writing it in plain words:",
             "  e.g. <code>/context my chundo has no sugar</code>",
-            "  e.g. <code>/context forget the milk note</code>",
             "<b>/deleteprofile</b> — delete everything I store about you.",
             "",
             "Your profile is private to this chat and never shown in any group.",

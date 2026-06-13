@@ -20,6 +20,7 @@ from redis.asyncio import Redis
 
 from analyzers.context.rewriter import build_context_rewriter
 from analyzers.image.factory import build_image_estimator
+from analyzers.intake.factory import build_intake_analyzer
 from analyzers.profile.extractor import build_profile_extractor
 from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
@@ -198,6 +199,40 @@ class World:
         await dispatch_update(update, deps=self.deps)
         return "\n".join(self.tg.sent[before:])
 
+    async def intake(
+        self,
+        *,
+        user_id: int,
+        text: str,
+        username: str | None = None,
+        group: bool = False,
+        when: datetime | None = None,
+    ) -> str:
+        """Send a real /intake update through dispatch; returns the reply card.
+
+        A DM (group=False) exercises the personal-group tracking path; a group
+        send exercises the allowlisted surface. The placeholder is edited in
+        place, so the joined text is the finished card."""
+        before = len(self.tg.sent)
+        chat = (
+            {"id": self.chat_id, "type": "supergroup"}
+            if group
+            else {"id": user_id, "type": "private"}
+        )
+        when = when or datetime.now(self.settings.timezone)
+        update = {
+            "update_id": 0,
+            "message": {
+                "message_id": 1_000_000 + before,
+                "date": int(when.timestamp()),
+                "chat": chat,
+                "from": {"id": user_id, "username": username, "first_name": "Eval"},
+                "text": f"/intake {text}".strip(),
+            },
+        }
+        await dispatch_update(update, deps=self.deps)
+        return "\n".join(self.tg.sent[before:])
+
     async def nudge(self) -> tuple[list[AtRiskUser], str]:
         """Run the evening at-risk check and send the one consolidated message
         (when anyone is at risk), returning the at-risk list and the sent text."""
@@ -287,11 +322,13 @@ async def build_world() -> World:
     photo_repo = RedisPhotoRepository(redis, timezone=s.timezone)
     profile_repo = RedisProfileRepository(redis)
     image_estimator = build_image_estimator(s, openai)
+    intake_analyzer = build_intake_analyzer(s, openai)
     day_summarizer = build_day_summarizer(s, openai)
     deps = Dependencies(
         repo=photo_repo,
         profile_repo=profile_repo,
         image_estimator=image_estimator,
+        intake_analyzer=intake_analyzer,
         day_summarizer=day_summarizer,
         profile_extractor=build_profile_extractor(s, openai),
         context_rewriter=build_context_rewriter(s, openai),

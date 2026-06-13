@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from analyzers.context.rewriter import ContextRewriter
 from analyzers.image.factory import ImageEstimator
+from analyzers.intake.factory import IntakeAnalyzer
 from analyzers.profile.extractor import ProfileExtractor
 from analyzers.recommend.recommender import Recommender
 from analyzers.summary.factory import DaySummarizer
@@ -18,18 +19,21 @@ from telegram.updates import (
     EditContextCommand,
     HelpCommand,
     Ignore,
+    IntakeCommand,
     ParsedUpdate,
     PhotoMessage,
     ProfileCommand,
     RecommendCommand,
     SummaryCommand,
     ViewContextCommand,
+    chat_type_is_group,
     parse_update,
 )
 from workflows.build_day_report import build_day_report
 from workflows.delete_meal import run_meal_deletion
 from workflows.dm_reply import send_dm
 from workflows.handle_context_command import handle_edit_context, handle_view_context
+from workflows.handle_intake import handle_intake
 from workflows.handle_photo import handle_photo
 from workflows.handle_profile_command import (
     handle_delete_profile,
@@ -62,6 +66,7 @@ class Dependencies:
     repo: PhotoRepository
     profile_repo: ProfileRepository
     image_estimator: ImageEstimator
+    intake_analyzer: IntakeAnalyzer
     day_summarizer: DaySummarizer
     profile_extractor: ProfileExtractor
     context_rewriter: ContextRewriter
@@ -78,13 +83,18 @@ async def dispatch_update(update: dict[str, Any], *, deps: Dependencies) -> None
         return
 
     if _is_group_surface(parsed):
-        # Group surface keeps its default-deny allowlist.
-        if deps.allowed_chat_ids and chat_id not in deps.allowed_chat_ids:
+        # The default-deny allowlist gates real group chats only. A private chat
+        # is the person's own one-member group and is implicitly allowed: photos,
+        # /summary, and /delete in the bot DM run the same tracking loop, and
+        # authenticity for that write surface comes from the webhook secret (see
+        # api/lifespan.py), exactly as for the profile commands below.
+        in_group = chat_type_is_group(update)
+        if in_group and deps.allowed_chat_ids and chat_id not in deps.allowed_chat_ids:
             logger.info(
                 "ignoring chat_id=%s (allowed=%s)", chat_id, deps.allowed_chat_ids
             )
             return
-        logger.info("webhook chat_id=%s", chat_id)
+        logger.info("group-surface chat_id=%s group=%s", chat_id, in_group)
         await _dispatch_group(parsed, chat_id=chat_id, deps=deps)
         return
 
@@ -160,6 +170,9 @@ async def _dispatch_group(
         case RecommendCommand() as command:
             await _dispatch_recommend(command, deps=deps)
 
+        case IntakeCommand() as command:
+            await _dispatch_intake(command, deps=deps)
+
 
 async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None:
     match parsed:
@@ -203,6 +216,27 @@ async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None
         case RecommendCommand() as command:
             await _dispatch_recommend(command, deps=deps)
 
+        case IntakeCommand() as command:
+            await _dispatch_intake(command, deps=deps)
+
+
+async def _dispatch_intake(command: IntakeCommand, *, deps: Dependencies) -> None:
+    """Route /intake; both surfaces share this arm. A typed meal always calls the
+    LLM (extraction + web search + coaching), so it is charged here, before any
+    work; a bare /intake only sends the usage hint and is free."""
+    if command.text.strip() and not await _allow_llm_command(
+        deps, command.user_id, command.chat_id
+    ):
+        return
+    await handle_intake(
+        command,
+        repo=deps.repo,
+        profile_repo=deps.profile_repo,
+        intake_analyzer=deps.intake_analyzer,
+        telegram=deps.telegram,
+        timezone=deps.timezone,
+    )
+
 
 async def _dispatch_recommend(
     command: RecommendCommand, *, deps: Dependencies
@@ -229,7 +263,7 @@ async def _dispatch_recommend(
 def _is_group_surface(parsed: ParsedUpdate) -> bool:
     """Whether this update belongs behind the group allowlist."""
     match parsed:
-        case RecommendCommand(surface=surface):
+        case RecommendCommand(surface=surface) | IntakeCommand(surface=surface):
             return surface == "group"
         case _:
             return isinstance(parsed, _GROUP_TYPES)
@@ -264,6 +298,7 @@ def _command_text(parsed: ParsedUpdate) -> str:
             ProfileCommand(text=text)
             | EditContextCommand(text=text)
             | RecommendCommand(text=text)
+            | IntakeCommand(text=text)
         ):
             return text
         case _:
@@ -283,6 +318,7 @@ def _chat_id_of(parsed: ParsedUpdate) -> int | None:
             | DeleteProfileCommand(chat_id=chat_id)
             | HelpCommand(chat_id=chat_id)
             | RecommendCommand(chat_id=chat_id)
+            | IntakeCommand(chat_id=chat_id)
         ):
             return chat_id
         case Ignore():

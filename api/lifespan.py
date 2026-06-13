@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 
 from analyzers.context.rewriter import build_context_rewriter
 from analyzers.image.factory import build_image_estimator
+from analyzers.intake.factory import build_intake_analyzer
 from analyzers.profile.extractor import build_profile_extractor
 from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
     profile_repo = build_profile_repository(settings)
     webhook_dedupe = build_webhook_dedupe(settings)
     image_estimator = build_image_estimator(settings, openai_client)
+    intake_analyzer = build_intake_analyzer(settings, openai_client)
     day_summarizer = build_day_summarizer(settings, openai_client)
     profile_extractor = build_profile_extractor(settings, openai_client)
     context_rewriter = build_context_rewriter(settings, openai_client)
@@ -48,6 +50,7 @@ async def lifespan(app: FastAPI):
         repo=repo,
         profile_repo=profile_repo,
         image_estimator=image_estimator,
+        intake_analyzer=intake_analyzer,
         day_summarizer=day_summarizer,
         profile_extractor=profile_extractor,
         context_rewriter=context_rewriter,

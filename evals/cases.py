@@ -25,6 +25,9 @@ VEG = "The tip never recommends eggs, meat, or fish as a food to eat or add (the
 SPLIT_TIP = "The tip is grounded in the visible plate, respects the user's dietary facts, and does not sound like a generic protein or light-next-meal template."
 SUMMARY = "The text describes one person's day with at least one strength and one gap, in plain words, and quotes no raw calorie or gram numbers."
 
+# /intake rules. The card must be grounded in the exact items the user typed.
+INTAKE = "The reply is a logged meal card for the typed items: it names both the chocolate and the almonds, shows one total calorie number for the meal, and lists the items under a 'What's in it' breakdown. It is a successful log, not an error or a request for more detail."
+
 # Streak rules. The reply rules embed the exact day-count the seeded history
 # must produce, so the judge verifies the streak maths, not just the wording.
 STREAK_5 = "The text tells the user they are on a 5-day streak (it states the number 5 as the streak/day count) and encourages them to keep it going."
@@ -192,6 +195,27 @@ class Day:
             self.to_judge.append((f"recommend · {user}", _plain(reply), judge))
         return reply
 
+    async def intake(
+        self,
+        user: str,
+        text: str,
+        *,
+        group: bool = False,
+        judge: str | None = None,
+    ) -> str:
+        reply = await self._world.intake(
+            user_id=self._id(user),
+            text=text,
+            username=user.lstrip("@"),
+            group=group,
+        )
+        self._say(f"{user} sends /intake {text}")
+        if reply:
+            print("\n" + _plain(reply) + "\n")
+        if judge:
+            self.to_judge.append((f"intake · {user}", _plain(reply), judge))
+        return reply
+
     async def delete_one(self, user: str) -> None:
         block = _block(await self._world.meals(), user)
         if not block or not block["meals"]:
@@ -341,6 +365,120 @@ async def case_streak_nudge(day: Day) -> None:
     await day.nudge(judge=NUDGE_KIND)
     await day.post("@meera", day.meal(), show=False)  # now logged today
     await day.nudge()  # nobody at risk -> no message sent
+
+
+async def case_intake(day: Day) -> None:
+    """A typed meal of simple items is looked up online and logged like a photo."""
+    await day.intake(
+        "@aarav",
+        "2 blocks of dark chocolate and 10 almonds",
+        group=True,
+        judge=INTAKE,
+    )
+
+
+async def case_intake_routing(day: Day) -> None:
+    """A DM is the person's own group: photos, /summary and /delete route through
+    the tracking loop, while /profile stays a private command (deterministic)."""
+    from telegram.updates import (
+        DeleteCommand,
+        IntakeCommand,
+        PhotoMessage,
+        ProfileCommand,
+        SummaryCommand,
+        parse_update,
+    )
+
+    def dm(message: dict) -> dict:
+        return {
+            "update_id": 0,
+            "message": {"date": 1, "chat": {"id": 42, "type": "private"}, **message},
+        }
+
+    sender = {"id": 42, "first_name": "Eval"}
+    photo = parse_update(dm({"message_id": 1, "from": sender, "photo": [{"file_id": "f", "file_size": 9}]}))
+    summary = parse_update(dm({"message_id": 2, "from": sender, "text": "/summary"}))
+    profile = parse_update(dm({"message_id": 3, "from": sender, "text": "/profile vegetarian"}))
+    delete = parse_update(dm({"message_id": 4, "from": sender, "text": "/delete", "reply_to_message": {"message_id": 1, "photo": [{"file_id": "f"}]}}))
+    intake_dm = parse_update(dm({"message_id": 5, "date": 1, "from": sender, "text": "/intake 10g almonds"}))
+    intake_group = parse_update({"update_id": 0, "message": {"message_id": 6, "date": 1, "chat": {"id": -100, "type": "supergroup"}, "from": sender, "text": "/intake paneer"}})
+
+    assert isinstance(photo, PhotoMessage), photo
+    assert isinstance(summary, SummaryCommand), summary
+    assert isinstance(profile, ProfileCommand), profile
+    assert isinstance(delete, DeleteCommand), delete
+    assert isinstance(intake_dm, IntakeCommand) and intake_dm.surface == "dm", intake_dm
+    assert isinstance(intake_group, IntakeCommand) and intake_group.surface == "group", intake_group
+    day._say("DM photo/summary/delete route to the group loop; /profile stays private")
+    day._say("/intake parses on both surfaces with the right surface tag")
+
+
+async def case_intake_reject(day: Day) -> None:
+    """A low-confidence or non-food typed meal is never stored (deterministic)."""
+    from datetime import datetime
+
+    from domain.analysis import FoodAnalysis
+    from telegram.updates import IntakeCommand
+    from workflows.handle_intake import (
+        LOW_CONFIDENCE_REPLY,
+        NOT_FOOD_REPLY,
+        handle_intake,
+    )
+
+    world = day._world
+    tz = world.settings.timezone
+    user_id = day._id("@reject")
+
+    def command(text: str) -> IntakeCommand:
+        return IntakeCommand(
+            user_id=user_id,
+            chat_id=world.chat_id,
+            message_id=-(700_000 + len(world.tg.sent)),
+            sender_label="@reject",
+            display_name="Reject",
+            text=text,
+            surface="group",
+            sent_at=datetime.now(tz),
+        )
+
+    async def low_confidence(_text: str, **_kwargs) -> FoodAnalysis:
+        return FoodAnalysis(
+            dish="vague heavy thali",
+            calories=900,
+            confidence="low",
+            tip="",
+            is_food=True,
+        )
+
+    async def not_food(_text: str, **_kwargs) -> FoodAnalysis:
+        return FoodAnalysis(
+            dish="Not food", calories=0, confidence="high", tip="", is_food=False
+        )
+
+    from core.dates import today_day_key
+
+    for label, analyzer, expected in (
+        ("low-confidence", low_confidence, LOW_CONFIDENCE_REPLY),
+        ("non-food", not_food, NOT_FOOD_REPLY),
+    ):
+        await handle_intake(
+            command("something"),
+            repo=world.photo_repo,
+            profile_repo=world.profile_repo,
+            intake_analyzer=analyzer,
+            telegram=world.tg,
+            timezone=tz,
+        )
+        assert world.tg.sent[-1] == expected, (label, world.tg.sent[-1])
+
+    # Nothing was stored: the rejecting user has no meals today.
+    stored = await world.photo_repo.estimated_photos_for_user_day(
+        chat_id=world.chat_id,
+        day_key=today_day_key(tz),
+        sender_label="@reject",
+    )
+    assert stored == [], stored
+    day._say("low-confidence and non-food intakes reply with a nudge and store nothing")
 
 
 async def case_rec_veg(day: Day) -> None:
@@ -531,6 +669,9 @@ CASES = {
     "streak_grace": case_streak_grace,
     "streak_summary": case_streak_summary,
     "streak_nudge": case_streak_nudge,
+    "intake": case_intake,
+    "intake_routing": case_intake_routing,
+    "intake_reject": case_intake_reject,
     "rec_veg": case_rec_veg,
     "rec_protein_gap": case_rec_protein_gap,
     "rec_sugar": case_rec_sugar,
