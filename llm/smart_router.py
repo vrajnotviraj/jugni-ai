@@ -96,7 +96,14 @@ class SmartRouter:
             "flex unavailable; routing to primary tier for %ds", COOLDOWN_SECONDS
         )
         if self._redis is not None:
-            await self._redis.set(FLEX_DOWN_KEY, "1", ex=COOLDOWN_SECONDS)
+            # The breaker is advisory: if the health-key write fails (a Redis blip
+            # during the long flex timeout), it must never break the caller's
+            # fallback to the primary tier. Worst case other workers don't see the
+            # down flag and retry flex, which just fails fast and falls back again.
+            try:
+                await self._redis.set(FLEX_DOWN_KEY, "1", ex=COOLDOWN_SECONDS)
+            except Exception:
+                logger.warning("flex-down write failed; primary fallback continues")
         else:
             self._flex_down_until = time.time() + COOLDOWN_SECONDS
 
