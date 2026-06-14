@@ -13,9 +13,9 @@ from zoneinfo import ZoneInfo
 from analyzers.recommend.recommender import Recommender
 from domain.recommendation import MEAL_SLOTS
 from presenters.recommend_reply import (
-    RECOMMEND_LINK_PREVIEW,
     RECOMMEND_REPLY_PARSE_MODE,
     format_recommendation,
+    recommend_link_preview,
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
@@ -74,6 +74,7 @@ async def handle_recommend_command(
         format_recommendation(
             result, for_label=command.sender_label if is_group else ""
         ),
+        link_preview_options=recommend_link_preview(result),
         placeholder_id=placeholder_id,
         reply_to_message_id=reply_to,
     )
@@ -110,6 +111,7 @@ async def _deliver(
     chat_id: int,
     text: str,
     *,
+    link_preview_options: dict,
     placeholder_id: int | None,
     reply_to_message_id: int | None = None,
 ) -> None:
@@ -122,7 +124,7 @@ async def _deliver(
                 message_id=placeholder_id,
                 text=text,
                 parse_mode=RECOMMEND_REPLY_PARSE_MODE,
-                link_preview_options=RECOMMEND_LINK_PREVIEW,
+                link_preview_options=link_preview_options,
             )
             return
         except Exception:
@@ -138,7 +140,7 @@ async def _deliver(
             text=text,
             reply_to_message_id=reply_to_message_id,
             parse_mode=RECOMMEND_REPLY_PARSE_MODE,
-            link_preview_options=RECOMMEND_LINK_PREVIEW,
+            link_preview_options=link_preview_options,
         )
     except Exception:
         logger.exception("recommend reply failed chat=%s", chat_id)

@@ -4,10 +4,16 @@ from domain.recommendation import MealRecommendationResult
 
 RECOMMEND_REPLY_PARSE_MODE = "HTML"
 
-# Every option now carries its own recipe link, so a single preview card can't
-# represent the list — Telegram only ever previews one URL. Suppress the preview
-# and keep the watch links inline (Bot API LinkPreviewOptions).
-RECOMMEND_LINK_PREVIEW = {"is_disabled": True}
+
+def recommend_link_preview(result: MealRecommendationResult) -> dict:
+    """The LinkPreviewOptions for the reply (Bot API). Every option carries its
+    own recipe link, but Telegram only previews one URL — so show a small card
+    for the first option that has a video, and disable the preview entirely when
+    none do. The other options keep their inline Watch links without a card."""
+    for option in result.options:
+        if option.video_url:
+            return {"url": option.video_url, "prefer_small_media": True}
+    return {"is_disabled": True}
 
 
 def format_recommendation(
