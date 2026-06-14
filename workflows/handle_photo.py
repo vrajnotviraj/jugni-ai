@@ -159,7 +159,11 @@ async def handle_photo(
             photo.chat_id,
             photo.message_id,
         )
-        await repo.mark_failed(photo, str(error))
+        # Best-effort: persisting the failure must never skip the reply below.
+        try:
+            await repo.mark_failed(photo, str(error))
+        except Exception:
+            logger.exception("mark_failed failed msg=%s", photo.message_id)
         await _deliver(telegram, photo, ANALYSIS_FAILED_REPLY, placeholder_id)
         return None
 

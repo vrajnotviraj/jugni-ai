@@ -83,7 +83,14 @@ async def handle_intake(
         return None
 
     async def _discard() -> None:
-        await repo.delete_meal(chat_id=photo.chat_id, message_id=photo.message_id)
+        # Best-effort, like the placeholder/streak guards: a cleanup failure must
+        # never skip the user's reply below (which _deliver sends right after).
+        try:
+            await repo.delete_meal(
+                chat_id=photo.chat_id, message_id=photo.message_id
+            )
+        except Exception:
+            logger.exception("intake discard failed msg=%s", photo.message_id)
 
     placeholder_id = await _send_placeholder(telegram, command)
 
