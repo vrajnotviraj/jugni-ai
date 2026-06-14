@@ -8,19 +8,6 @@ RECOMMEND_REPLY_PARSE_MODE = "HTML"
 # thumbnail that dwarfs the options (Bot API LinkPreviewOptions).
 RECOMMEND_LINK_PREVIEW = {"prefer_small_media": True}
 
-# The bare-command prompt shown above the slot keyboard.
-PICK_SLOT_TEXT = "What should I suggest? Pick a meal:"
-
-# Telegram reply keyboard buttons send their text as normal user messages, so
-# this stays on the ordinary /recommend command path with no callback handling.
-_SLOT_ROWS = (("breakfast", "lunch"), ("dinner", "snack"))
-
-SLOT_KEYBOARD = {
-    "keyboard": [[f"/recommend {slot}" for slot in row] for row in _SLOT_ROWS],
-    "one_time_keyboard": True,
-    "resize_keyboard": True,
-}
-
 
 def format_recommendation(
     result: MealRecommendationResult,

@@ -46,8 +46,8 @@ from workflows.send_day_report import send_day_report
 logger = logging.getLogger(__name__)
 
 # Launch-time abuse/cost stop-gap: each user gets this many LLM-backed
-# commands (/profile with text, /context with text, /recommend with text) per
-# day. Read-only commands and the bare /recommend keyboard are free.
+# commands (/profile with text, /context with text, every /recommend) per
+# day. Read-only commands (bare /profile, /context, /summary) are free.
 DAILY_LLM_LIMIT = 25
 
 _LIMIT_REPLY = (
@@ -243,11 +243,10 @@ async def _dispatch_recommend(
 ) -> None:
     """Route /recommend; both surfaces share this arm.
 
-    A one-step command (text present) is charged here, before any LLM work;
-    a bare command only sends the free slot keyboard."""
-    if command.text and not await _allow_llm_command(
-        deps, command.user_id, command.chat_id
-    ):
+    Every /recommend now produces a macro-aware suggestion (a bare command
+    plans the current meal slot), so each one is an LLM-backed command charged
+    here, before any work."""
+    if not await _allow_llm_command(deps, command.user_id, command.chat_id):
         return
     await handle_recommend_command(
         command,

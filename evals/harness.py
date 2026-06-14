@@ -56,7 +56,7 @@ class _Telegram:
     def __init__(self) -> None:
         self.sent: list[str] = []
         # The reply_markup of each sent message (None for plain messages), so
-        # cases can assert on the /recommend slot keyboard.
+        # cases can assert a reply carries no keyboard.
         self.markups: list[dict | None] = []
         self._next_id = 1000
         # Maps each returned message_id to its index in `sent`, so an edit can

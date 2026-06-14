@@ -205,7 +205,19 @@ def _parse_private_message(
     # A DM is the person's own one-member group: anything that isn't a private
     # command (a food photo, /summary, /delete) is parsed and logged exactly as
     # it would be in a group chat, so the full tracking loop works in the bot DM.
-    return _parse_group_message(message, update)
+    fallback = _parse_group_message(message, update)
+    if not isinstance(fallback, Ignore):
+        return fallback
+
+    # Empty or unrecognised text in a DM: greet with what the bot can do (the
+    # same photo-first help shown for /start), rather than silently ignoring it.
+    if user_id is not None:
+        return HelpCommand(
+            user_id=int(user_id),
+            chat_id=int(message["chat"]["id"]),
+            display_name=_display_name(sender),
+        )
+    return Ignore()
 
 
 def _parse_recommend_command(
