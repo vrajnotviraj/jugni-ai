@@ -68,6 +68,17 @@ def summary_time_context(
     )
 
 
+def meal_period_for_hour(hour: int) -> str:
+    """The meal period a given local hour falls into: breakfast, lunch, or
+    dinner. Used to tell whether the meal for the current slot has already been
+    eaten today (a dinner-window meal means dinner is done)."""
+    if hour < LUNCH_FROM_HOUR:
+        return "breakfast"
+    if hour < DINNER_FROM_HOUR:
+        return "lunch"
+    return "dinner"
+
+
 def next_meal_slot(timezone: ZoneInfo, now: datetime | None = None) -> str:
     """The next meal to plan for, by the local hour in ``timezone``.
 

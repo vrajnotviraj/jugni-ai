@@ -17,6 +17,7 @@ class Settings:
     openai_model: str
     openai_flex_enabled: bool
     openai_flex_timeout: float
+    youtube_api_key: str | None
     timezone: ZoneInfo
     admin_api_secret: str | None
     cron_secret: str | None
@@ -35,6 +36,7 @@ class Settings:
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
             openai_flex_enabled=_bool_env("OPENAI_FLEX_ENABLED", default=True),
             openai_flex_timeout=float(os.getenv("OPENAI_FLEX_TIMEOUT", "45")),
+            youtube_api_key=(os.getenv("YOUTUBE_API_KEY") or "").strip() or None,
             timezone=ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Kolkata")),
             admin_api_secret=os.getenv("ADMIN_API_SECRET") or None,
             cron_secret=os.getenv("CRON_SECRET") or None,
