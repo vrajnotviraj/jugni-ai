@@ -77,9 +77,15 @@ async def build_recommendation_context(
     # already eaten it today — then round it off with a complementary snack or
     # light dessert rather than proposing a second dinner.
     explicit_slot = slot is not None
-    meal_slot = next_meal_slot(zone)
-    after_meal = not explicit_slot and _already_ate(today, meal_slot, zone)
-    resolved_slot = slot or ("snack" if after_meal else meal_slot)
+    default_slot = next_meal_slot(zone)
+    # The "already ate it, round off with a snack" check keys off the *current*
+    # meal period, not default_slot: once the eating day is over (>= 21:00)
+    # next_meal_slot points at tomorrow's breakfast, so testing that window would
+    # miss a finished dinner and propose a full breakfast at night instead of the
+    # intended snack.
+    current_slot = meal_period_for_hour(datetime.now(zone).hour)
+    after_meal = not explicit_slot and _already_ate(today, current_slot, zone)
+    resolved_slot = slot or ("snack" if after_meal else default_slot)
 
     is_group = surface == "group"
     dietary = await dietary_facts(profile, profile_repo, user_id, public=is_group)
@@ -97,7 +103,7 @@ async def build_recommendation_context(
         user_request=user_request,
         time_context=_time_line(
             zone, resolved_slot, explicit=explicit_slot,
-            after_meal_slot=meal_slot if after_meal else None,
+            after_meal_slot=current_slot if after_meal else None,
         ),
         # The group surface gets the goal's direction in the user's own words,
         # never the derived calorie figure goal_summary appends.
