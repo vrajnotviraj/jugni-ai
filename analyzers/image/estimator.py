@@ -1,5 +1,6 @@
 import base64
 import logging
+from collections.abc import Awaitable, Callable
 
 from openai import AsyncOpenAI
 
@@ -22,6 +23,12 @@ from llm.openai_client import call_responses
 
 logger = logging.getLogger(__name__)
 
+# Called with the extraction-only analysis (no tip yet) the moment the objective
+# vision pass lands, before the slower coaching pass runs. The photo/intake
+# workflows use it to persist the meal and flip it to "done" right away, so a
+# repeat request sees a finished meal instead of waiting on the tip.
+ExtractionHook = Callable[[FoodAnalysis], Awaitable[None]]
+
 
 async def analyse_image(
     client: AsyncOpenAI,
@@ -37,6 +44,7 @@ async def analyse_image(
     personal_goal: str | None = None,
     protein_so_far_g: int | None = None,
     protein_target_g: int | None = None,
+    on_extracted: ExtractionHook | None = None,
 ) -> FoodAnalysis:
     # Two passes: an objective vision extraction (numbers only, no goals or diet),
     # then a text-only coaching pass that reads those macros and the person's day
@@ -63,6 +71,11 @@ async def analyse_image(
         cache_key="food-extraction",
     )
     extraction = parse_meal_extraction(raw_extraction)
+    # Hand the objective result to the caller before the coaching pass: this is the
+    # point the meal can be saved and marked "done" (the tip is best-effort and lands
+    # later via set_tip).
+    if on_extracted is not None:
+        await on_extracted(merge_food_analysis(extraction))
     if not extraction.is_food:
         logger.info(
             "image extraction returned non-food confidence=%s",

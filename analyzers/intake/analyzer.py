@@ -9,7 +9,7 @@ from analyzers.image.coaching import (
     food_coaching_user_prompt,
     parse_coaching_tip,
 )
-from analyzers.image.estimator import merge_food_analysis
+from analyzers.image.estimator import ExtractionHook, merge_food_analysis
 from analyzers.image.extraction import (
     FOOD_EXTRACTION_RESPONSE_FORMAT,
     parse_meal_extraction,
@@ -43,6 +43,7 @@ async def analyse_intake(
     personal_goal: str | None = None,
     protein_so_far_g: int | None = None,
     protein_target_g: int | None = None,
+    on_extracted: ExtractionHook | None = None,
 ) -> FoodAnalysis:
     # Same two passes as the photo path: an objective text extraction (numbers
     # only, grounded by web search), then the shared text-only coaching pass.
@@ -58,6 +59,11 @@ async def analyse_intake(
         cache_key="intake-extraction",
     )
     extraction = parse_meal_extraction(raw_extraction)
+    # Hand the objective result to the caller before coaching; for a typed meal the
+    # caller persists it only when it's loggable (food + confident enough), so the
+    # rejected branches below still store nothing.
+    if on_extracted is not None:
+        await on_extracted(merge_food_analysis(extraction))
     if not extraction.is_food:
         logger.info(
             "intake extraction returned non-food confidence=%s", extraction.confidence

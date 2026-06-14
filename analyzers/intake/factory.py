@@ -3,6 +3,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from analyzers.image.estimator import ExtractionHook
 from analyzers.intake.analyzer import analyse_intake
 from core.settings import Settings
 from domain.analysis import FoodAnalysis
@@ -27,6 +28,7 @@ def build_intake_analyzer(
         personal_goal: str | None = None,
         protein_so_far_g: int | None = None,
         protein_target_g: int | None = None,
+        on_extracted: ExtractionHook | None = None,
     ) -> FoodAnalysis:
         return await analyse_intake(
             openai_client,
@@ -39,6 +41,7 @@ def build_intake_analyzer(
             personal_goal=personal_goal,
             protein_so_far_g=protein_so_far_g,
             protein_target_g=protein_target_g,
+            on_extracted=on_extracted,
         )
 
     return analyzer

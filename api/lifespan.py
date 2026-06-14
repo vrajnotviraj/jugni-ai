@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from openai import AsyncOpenAI
+from redis.asyncio import Redis
 
 from analyzers.context.rewriter import build_context_rewriter
 from analyzers.image.factory import build_image_estimator
@@ -13,6 +14,7 @@ from analyzers.recommend.factory import build_recommender
 from analyzers.summary.factory import build_day_summarizer
 from core.logging import configure_logging
 from core.settings import Settings
+from llm.smart_router import configure_router
 from storage.factory import (
     build_photo_repository,
     build_profile_repository,
@@ -32,6 +34,14 @@ async def lifespan(app: FastAPI):
     settings = Settings.from_environment()
     _warn_if_webhook_secret_missing(settings)
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    # The router's flex health is shared across Vercel workers, so it gets its own
+    # small Redis connection (same pattern as the repos in storage/factory).
+    router_redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    configure_router(
+        redis=router_redis,
+        flex_enabled=settings.openai_flex_enabled,
+        flex_timeout=settings.openai_flex_timeout,
+    )
     telegram = TelegramBotApi(
         settings.telegram_bot_token,
         dry_run=settings.telegram_dry_run,
@@ -100,6 +110,7 @@ async def lifespan(app: FastAPI):
         await repo.close()
         await profile_repo.close()
         await webhook_dedupe.close()
+        await router_redis.aclose()
 
 
 async def _register_bot_commands(telegram: TelegramBotApi) -> None:

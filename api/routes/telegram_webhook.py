@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.dependencies import (
     get_deps,
@@ -10,6 +10,7 @@ from api.dependencies import (
     webhook_secret_header,
 )
 from core.settings import Settings
+from domain.photo import PhotoStillProcessing
 from storage.webhook_dedupe import WebhookDedupe
 from workflows.dispatch_update import Dependencies, dispatch_update
 
@@ -42,7 +43,14 @@ async def telegram_webhook(
     if await dedupe.was_sent(update_id):
         logger.info("webhook duplicate acked update_id=%s", update_id)
         return {"ok": True}
-    await dispatch_update(update, deps=deps)
+    try:
+        await dispatch_update(update, deps=deps)
+    except PhotoStillProcessing:
+        # The first delivery of this meal is still analysing. Answer 500 (and skip
+        # the dedupe mark) so Telegram redelivers; once it reaches "done" the retry
+        # replies with the finished card and acks 200.
+        logger.info("webhook still processing update_id=%s; asking retry", update_id)
+        raise HTTPException(status_code=500, detail="still processing") from None
     await dedupe.mark_sent(update_id)
     return {"ok": True}
 

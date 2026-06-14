@@ -1,4 +1,25 @@
-from openai import AsyncOpenAI
+import logging
+
+from openai import APIStatusError, APITimeoutError, AsyncOpenAI
+
+from llm.smart_router import pick_route, report_unavailable
+
+logger = logging.getLogger(__name__)
+
+
+def _flex_unavailable(exc: APITimeoutError | APIStatusError) -> bool:
+    """True when an error means "flex can't serve this" — so mark flex down.
+
+    Covers the three ways flex bows out: it timed out, it's out of capacity (429),
+    or the model doesn't offer flex at all (400 naming service_tier — a backstop;
+    the model allowlist already keeps unsupported models off flex). Any other
+    status is a real error and must surface unchanged.
+    """
+    if isinstance(exc, APITimeoutError):
+        return True
+    if exc.status_code == 429:
+        return True
+    return exc.status_code == 400 and "service_tier" in str(exc).lower()
 
 
 async def call_responses(
@@ -49,6 +70,40 @@ async def call_responses(
         kwargs["prompt_cache_key"] = cache_key
     if cache_retention:
         kwargs["prompt_cache_retention"] = cache_retention
+
+    # The smart router picks the route: the flex tier when this model supports it
+    # and flex is healthy, else the primary tier. A flex route carries a longer
+    # timeout (slow is fine on the cheap lane). When flex bows out (it ran past the
+    # flex timeout, or hit a 429), we mark it down for 30 minutes AND fall through to
+    # the primary tier in this same call, so the request still succeeds — at the cost
+    # of stacking the primary call after flex's timeout this once. The breaker means
+    # only the first call in a 30-minute window pays that stacked latency; every
+    # later call routes straight to primary. Any other error from the flex attempt is
+    # a real failure and surfaces unchanged.
+    route = await pick_route(model)
+    logger.info(
+        "llm route: model=%s tier=%s cache_key=%s",
+        model,
+        route.service_tier or "primary",
+        cache_key,
+    )
+    if route.service_tier is not None:
+        flex_client = client.with_options(timeout=route.timeout)
+        try:
+            response = await flex_client.responses.create(
+                service_tier=route.service_tier, **kwargs
+            )
+            return response.output_text
+        except (APITimeoutError, APIStatusError) as exc:
+            if not _flex_unavailable(exc):
+                raise
+            logger.warning(
+                "flex call failed (cache_key=%s): %r — marking flex down and "
+                "falling back to the primary tier in this call",
+                cache_key,
+                exc,
+            )
+            await report_unavailable(route)
 
     response = await client.responses.create(**kwargs)
     return response.output_text

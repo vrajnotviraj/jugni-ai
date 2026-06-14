@@ -15,6 +15,8 @@ class Settings:
     redis_url: str
     openai_api_key: str
     openai_model: str
+    openai_flex_enabled: bool
+    openai_flex_timeout: float
     youtube_api_key: str | None
     timezone: ZoneInfo
     admin_api_secret: str | None
@@ -32,6 +34,8 @@ class Settings:
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             openai_api_key=_required_env("OPENAI_API_KEY"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            openai_flex_enabled=_bool_env("OPENAI_FLEX_ENABLED", default=True),
+            openai_flex_timeout=float(os.getenv("OPENAI_FLEX_TIMEOUT", "45")),
             youtube_api_key=(os.getenv("YOUTUBE_API_KEY") or "").strip() or None,
             timezone=ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Kolkata")),
             admin_api_secret=os.getenv("ADMIN_API_SECRET") or None,
@@ -51,5 +55,8 @@ def _int_tuple_env(name: str) -> tuple[int, ...]:
     return tuple(int(t) for t in raw.split(",") if t.strip())
 
 
-def _bool_env(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _bool_env(name: str, *, default: bool = False) -> bool:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}

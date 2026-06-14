@@ -1,7 +1,7 @@
 from typing import Protocol
 
 from domain.analysis import FoodAnalysis
-from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
+from domain.photo import DeletedMeal, Photo, PhotoStatus, StoredPhoto, UpdatedMeal
 
 
 class PhotoRepository(Protocol):
@@ -30,10 +30,21 @@ class PhotoRepository(Protocol):
         """Return a prior analysis for the same image from this sender/day."""
 
     async def complete(self, photo: Photo, analysis: FoodAnalysis) -> None:
-        """Save a successful food analysis for a reserved photo."""
+        """Save a successful food analysis for a reserved photo.
+
+        This flips the meal to ESTIMATED ("done"); callers persist the objective
+        extraction here as soon as it lands, then add the coaching tip via
+        ``set_tip`` once the (slower, best-effort) tip pass returns.
+        """
+
+    async def set_tip(self, photo: Photo, tip: str) -> None:
+        """Attach the coaching tip to an already-completed meal."""
 
     async def mark_failed(self, photo: Photo, error: str) -> None:
         """Save a failure for a reserved photo."""
+
+    async def status(self, photo: Photo) -> PhotoStatus | None:
+        """Return the stored status for a meal, or None if it isn't stored."""
 
     async def estimated_photos_for_day(
         self,
