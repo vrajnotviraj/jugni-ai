@@ -6,9 +6,22 @@ from typing import Any
 
 
 class PhotoStatus(StrEnum):
+    # PENDING is the "processing" state (reserved, analysis in flight); ESTIMATED is
+    # "done" (extraction saved and the meal is logged); FAILED means extraction
+    # itself errored. A repeat delivery of a still-PENDING meal raises
+    # PhotoStillProcessing so the webhook answers 500 and Telegram retries later.
     PENDING = "pending"
     ESTIMATED = "estimated"
     FAILED = "failed"
+
+
+class PhotoStillProcessing(Exception):
+    """A repeat request arrived while this meal is still being analysed.
+
+    Raised by the photo/intake workflows when a reservation already exists in the
+    PENDING state. The webhook turns it into an HTTP 500 so Telegram redelivers the
+    update; once analysis reaches ESTIMATED ("done"), the retry answers 200 instead.
+    """
 
 
 @dataclass(frozen=True, slots=True)

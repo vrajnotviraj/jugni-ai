@@ -6,7 +6,7 @@ from analyzers.image.factory import ImageEstimator
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
-from domain.photo import Photo, StoredPhoto
+from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
 from presenters.photo_reply import (
     PHOTO_REPLY_PARSE_MODE,
     format_photo_reply,
@@ -74,6 +74,15 @@ async def handle_photo(
         return duplicate
 
     if not await repo.reserve(photo, day_key=day_key, content_hash=content_hash):
+        # A repeat delivery of this exact message. If the first run is still
+        # analysing (PENDING), signal the webhook to answer 500 so Telegram retries
+        # once it's done; if it already finished, the duplicate reply above handled
+        # it, so just ack.
+        if await repo.status(photo) == PhotoStatus.PENDING:
+            logger.info(
+                "photo still processing msg=%s; signalling retry", photo.message_id
+            )
+            raise PhotoStillProcessing
         logger.info("photo already stored, skipping msg=%s", photo.message_id)
         return None
 
@@ -124,6 +133,12 @@ async def handle_photo(
         telegram, photo, image_bytes, media_type
     )
 
+    async def _persist_extraction(extraction: FoodAnalysis) -> None:
+        # Save the objective result and mark the meal "done" the moment extraction
+        # lands, so a repeat delivery sees a finished meal while the tip pass is
+        # still running. The tip is added afterwards via set_tip.
+        await repo.complete(photo, extraction)
+
     try:
         analysis = await image_estimator(
             image_bytes,
@@ -136,6 +151,7 @@ async def handle_photo(
             personal_goal=personal_goal,
             protein_so_far_g=protein_so_far,
             protein_target_g=protein_target,
+            on_extracted=_persist_extraction,
         )
     except Exception as error:
         logger.exception(
@@ -156,7 +172,10 @@ async def handle_photo(
         analysis.is_food,
     )
 
-    await repo.complete(photo, analysis)
+    # Extraction was already saved and the meal marked "done" via the hook above;
+    # now attach the coaching tip the second pass produced (empty for non-food).
+    if analysis.tip:
+        await repo.set_tip(photo, analysis.tip)
     # Reinforce the streak only on the first meal of the local day (KTD4); `prior`
     # was read before this photo was stored, so empty means this is the first.
     streak_line = await _streak_line(repo, photo, day_key) if not prior else None

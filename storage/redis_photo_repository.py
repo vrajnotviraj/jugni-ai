@@ -5,7 +5,7 @@ from redis.asyncio import Redis
 
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
-from domain.photo import DeletedMeal, Photo, StoredPhoto, UpdatedMeal
+from domain.photo import DeletedMeal, Photo, PhotoStatus, StoredPhoto, UpdatedMeal
 from storage._hash_codec import (
     analysis_from_hash,
     analysis_to_fields,
@@ -81,11 +81,25 @@ class RedisPhotoRepository:
             mapping=analysis_to_fields(analysis),
         )
 
+    async def set_tip(self, photo: Photo, tip: str) -> None:
+        await self._redis.hset(_photo_key(photo.chat_id, photo.message_id), "tip", tip)
+
     async def mark_failed(self, photo: Photo, error: str) -> None:
         await self._redis.hset(
             _photo_key(photo.chat_id, photo.message_id),
             mapping=failure_to_fields(error),
         )
+
+    async def status(self, photo: Photo) -> PhotoStatus | None:
+        raw = await self._redis.hget(
+            _photo_key(photo.chat_id, photo.message_id), "status"
+        )
+        if raw in (None, ""):
+            return None
+        try:
+            return PhotoStatus(raw)
+        except ValueError:
+            return None
 
     async def estimated_photos_for_day(
         self,

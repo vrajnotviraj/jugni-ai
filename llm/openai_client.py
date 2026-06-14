@@ -73,16 +73,13 @@ async def call_responses(
 
     # The smart router picks the route: the flex tier when this model supports it
     # and flex is healthy, else the primary tier. A flex route carries a longer
-    # timeout (slow is fine on the cheap lane). When flex bows out, we mark it down
-    # for 15 minutes and re-raise — we do NOT retry on primary in the same request,
-    # because that would stack flex's timeout on top of the primary call and blow
-    # the webhook's budget. The breaker means only the first call in a 15-minute
-    # window pays this; every later call routes straight to primary. How the raised
-    # error lands is the caller's call: the image/intake tip degrades to its own
-    # fallback and the recommender drops to deterministic options, while the photo
-    # and intake extraction reply "couldn't read that" — the user re-sends and, with
-    # flex now marked down, that attempt runs on primary. (These callers catch the
-    # error and answer 200, so there is no automatic Telegram webhook retry.)
+    # timeout (slow is fine on the cheap lane). When flex bows out (it ran past the
+    # flex timeout, or hit a 429), we mark it down for 30 minutes AND fall through to
+    # the primary tier in this same call, so the request still succeeds — at the cost
+    # of stacking the primary call after flex's timeout this once. The breaker means
+    # only the first call in a 30-minute window pays that stacked latency; every
+    # later call routes straight to primary. Any other error from the flex attempt is
+    # a real failure and surfaces unchanged.
     route = await pick_route(model)
     logger.info(
         "llm route: model=%s tier=%s cache_key=%s",
@@ -101,13 +98,12 @@ async def call_responses(
             if not _flex_unavailable(exc):
                 raise
             logger.warning(
-                "flex call failed (cache_key=%s): %r — marking flex down; this "
-                "attempt fails and the retry will use the primary tier",
+                "flex call failed (cache_key=%s): %r — marking flex down and "
+                "falling back to the primary tier in this call",
                 cache_key,
                 exc,
             )
             await report_unavailable(route)
-            raise
 
     response = await client.responses.create(**kwargs)
     return response.output_text

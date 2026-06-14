@@ -5,7 +5,7 @@ from analyzers.intake.factory import IntakeAnalyzer
 from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
-from domain.photo import Photo, StoredPhoto
+from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
 from presenters.photo_reply import (
     PHOTO_REPLY_PARSE_MODE,
     format_photo_reply,
@@ -69,6 +69,22 @@ async def handle_intake(
         sent_at=command.sent_at,
     )
 
+    # Reserve before any work (and before the placeholder) so a repeat /intake of
+    # the same message locks: a still-running one signals 500 so Telegram retries
+    # once it's done, a finished one just acks. The reservation for a meal we end
+    # up rejecting (non-food, too vague) is discarded below, so nothing is stored.
+    if not await repo.reserve(photo, day_key=day_key):
+        if await repo.status(photo) == PhotoStatus.PENDING:
+            logger.info(
+                "intake still processing msg=%s; signalling retry", command.message_id
+            )
+            raise PhotoStillProcessing
+        logger.info("intake already stored, skipping msg=%s", command.message_id)
+        return None
+
+    async def _discard() -> None:
+        await repo.delete_meal(chat_id=photo.chat_id, message_id=photo.message_id)
+
     placeholder_id = await _send_placeholder(telegram, command)
 
     eaten_at = command.sent_at.astimezone(user_zone).strftime("%H:%M")
@@ -92,6 +108,13 @@ async def handle_intake(
         len(text),
     )
 
+    async def _persist_extraction(extraction: FoodAnalysis) -> None:
+        # Save + mark "done" the moment extraction lands, but only when the typed
+        # meal is actually loggable; non-food/too-vague intakes are never stored
+        # (their reservation is discarded below). The tip is added later via set_tip.
+        if _is_loggable(extraction):
+            await repo.complete(photo, extraction)
+
     try:
         analysis = await intake_analyzer(
             text,
@@ -102,6 +125,7 @@ async def handle_intake(
             personal_goal=personal_goal,
             protein_so_far_g=protein_so_far,
             protein_target_g=protein_target,
+            on_extracted=_persist_extraction,
         )
     except Exception:
         logger.exception(
@@ -109,6 +133,7 @@ async def handle_intake(
             command.chat_id,
             command.message_id,
         )
+        await _discard()
         await _deliver(telegram, command, INTAKE_FAILED_REPLY, placeholder_id)
         return None
 
@@ -122,23 +147,20 @@ async def handle_intake(
     )
 
     # Text intake is meant for simple items; anything we can't size honestly is
-    # rejected rather than logged with a wrong number. Nothing is stored in these
-    # branches, so the meal never enters the tally.
+    # rejected rather than logged with a wrong number. The hook above stored
+    # nothing for these, so discard the reservation to leave no trace in the tally.
     if not analysis.is_food:
+        await _discard()
         await _deliver(telegram, command, NOT_FOOD_REPLY, placeholder_id)
         return analysis
     if analysis.confidence == "low":
+        await _discard()
         await _deliver(telegram, command, LOW_CONFIDENCE_REPLY, placeholder_id)
         return analysis
 
-    if not await repo.reserve(photo, day_key=day_key):
-        logger.info("intake already stored, skipping msg=%s", command.message_id)
-        # The original processing of this message already replied; clear the
-        # placeholder this duplicate run left behind so no "Looking up your
-        # meal…" message lingers.
-        await _remove_placeholder(telegram, command, placeholder_id)
-        return None
-    await repo.complete(photo, analysis)
+    # Extraction was saved and the meal marked "done" via the hook; attach the tip.
+    if analysis.tip:
+        await repo.set_tip(photo, analysis.tip)
 
     daily_total = await repo.daily_user_calories(
         chat_id=command.chat_id, day_key=day_key, sender_label=command.sender_label
@@ -158,6 +180,12 @@ async def handle_intake(
     )
     await _deliver(telegram, command, reply, placeholder_id)
     return analysis
+
+
+def _is_loggable(analysis: FoodAnalysis) -> bool:
+    """Whether a typed meal is worth storing: real food we can size honestly. A
+    low-confidence reading is too vague to log with a number we'd stand behind."""
+    return analysis.is_food and analysis.confidence != "low"
 
 
 def _format_prior_meals(photos: list[StoredPhoto], timezone: ZoneInfo) -> str:
@@ -212,27 +240,6 @@ async def _send_placeholder(
             command.message_id,
         )
         return None
-
-
-async def _remove_placeholder(
-    telegram: TelegramBotApi,
-    command: IntakeCommand,
-    placeholder_id: int | None,
-) -> None:
-    """Delete the 'Looking up your meal…' placeholder when a branch returns
-    without a reply to edit into it."""
-    if placeholder_id is None:
-        return
-    try:
-        await telegram.delete_message(
-            chat_id=command.chat_id, message_id=placeholder_id
-        )
-    except Exception:
-        logger.exception(
-            "intake placeholder cleanup failed chat=%s msg=%s",
-            command.chat_id,
-            command.message_id,
-        )
 
 
 async def _deliver(

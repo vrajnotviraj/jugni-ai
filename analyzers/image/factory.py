@@ -3,7 +3,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from analyzers.image.estimator import analyse_image
+from analyzers.image.estimator import ExtractionHook, analyse_image
 from core.settings import Settings
 from domain.analysis import FoodAnalysis
 
@@ -29,6 +29,7 @@ def build_image_estimator(
         personal_goal: str | None = None,
         protein_so_far_g: int | None = None,
         protein_target_g: int | None = None,
+        on_extracted: ExtractionHook | None = None,
     ) -> FoodAnalysis:
         return await analyse_image(
             openai_client,
@@ -43,6 +44,7 @@ def build_image_estimator(
             personal_goal=personal_goal,
             protein_so_far_g=protein_so_far_g,
             protein_target_g=protein_target_g,
+            on_extracted=on_extracted,
         )
 
     return estimator

@@ -8,11 +8,12 @@ A *route* is how a request is sent. There are two:
 
 Flex is used only when (a) the call's model actually supports it — gpt-4.1 and
 friends reject ``service_tier=flex`` — and (b) flex isn't currently marked down.
-When a flex call times out or hits a 429, ``report_unavailable`` marks flex down
-for 15 minutes; the caller then fails this attempt and the *next* call (a Telegram
-webhook retry, or the image tip's own fallback) takes the primary lane. Health is
-keyed in Redis so every Vercel worker shares one view — pass ``redis=None`` to keep
-it in-process for evals, where a trip must never touch the key the live bot reads.
+When a flex call times out (it ran past the flex timeout) or hits a 429,
+``report_unavailable`` marks flex down for 30 minutes; the same call then falls back
+to the primary tier (see ``call_responses``), and every *other* call in that window
+routes straight to primary. Health is keyed in Redis so every Vercel worker shares
+one view — pass ``redis=None`` to keep it in-process for evals, where a trip must
+never touch the key the live bot reads.
 
 This is the single seam for routing. Adding a model, or failing over to another
 provider (e.g. Anthropic when OpenAI's uptime drops), means editing here only —
@@ -28,7 +29,7 @@ from redis.asyncio import Redis
 logger = logging.getLogger(__name__)
 
 FLEX_DOWN_KEY = "llm:flex:down"
-COOLDOWN_SECONDS = 15 * 60
+COOLDOWN_SECONDS = 30 * 60
 
 # Model families OpenAI offers the flex service tier on. Other models (e.g.
 # gpt-4.1) reject service_tier=flex with a 400, so we never route them through it.
