@@ -1,11 +1,9 @@
 """Orchestrate /recommend on both surfaces.
 
-A bare command (a menu tap auto-sends with no args) gets the slot reply
-keyboard — free, no LLM work; tapping a button sends "/recommend <slot>" as a
-normal message from whoever tapped, which lands right back here as a one-step
-command, charged to that person's own daily cap at dispatch. No callback
-handling, no per-button identity: every tap is just a regular command from
-its sender.
+Every command — bare or with text — produces a macro-aware suggestion. A bare
+``/recommend`` plans the meal for the current time of day (or a round-off snack
+if that meal is already logged); any text refines it with an explicit slot or a
+free-form ask. There is no meal-type menu: one command, one suggestion.
 """
 
 import logging
@@ -15,10 +13,8 @@ from zoneinfo import ZoneInfo
 from analyzers.recommend.recommender import Recommender
 from domain.recommendation import MEAL_SLOTS
 from presenters.recommend_reply import (
-    PICK_SLOT_TEXT,
     RECOMMEND_LINK_PREVIEW,
     RECOMMEND_REPLY_PARSE_MODE,
-    SLOT_KEYBOARD,
     format_recommendation,
 )
 from storage.photo_repository import PhotoRepository
@@ -41,19 +37,8 @@ async def handle_recommend_command(
     allowed_chat_ids: tuple[int, ...],
 ) -> None:
     is_group = command.surface == "group"
-    # Replying to the command threads the conversation in groups and lets the
-    # keyboard's ``selective`` flag scope it to the requester.
+    # Replying to the command threads the conversation in groups.
     reply_to = command.message_id if is_group else None
-
-    if not command.text.strip():
-        await _safely_send(
-            telegram,
-            command.chat_id,
-            PICK_SLOT_TEXT,
-            reply_to_message_id=reply_to,
-            reply_markup=SLOT_KEYBOARD,
-        )
-        return
 
     slot = parse_slot(command.text)
     # Meal history lives in the group chat: the command's own chat on the
@@ -101,7 +86,6 @@ async def _safely_send(
     text: str,
     *,
     reply_to_message_id: int | None = None,
-    reply_markup: dict | None = None,
 ) -> None:
     try:
         await telegram.send_message(
@@ -109,7 +93,6 @@ async def _safely_send(
             text=text,
             reply_to_message_id=reply_to_message_id,
             parse_mode=RECOMMEND_REPLY_PARSE_MODE,
-            reply_markup=reply_markup,
             link_preview_options=RECOMMEND_LINK_PREVIEW,
         )
     except Exception:

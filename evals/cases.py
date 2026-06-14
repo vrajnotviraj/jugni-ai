@@ -582,17 +582,11 @@ async def case_rec_group_privacy(day: Day) -> None:
     await day.recommend("@aarav", "dinner", group=True, judge=REC_GROUP_PRIVATE)
 
 
-async def case_rec_buttons(day: Day) -> None:
-    """A bare /recommend shows the slot keyboard; a tap sends the command and gets options (deterministic)."""
-    keyboard_prompt = await day.recommend("@kabir", group=True)
-    assert "Pick a meal" in keyboard_prompt, keyboard_prompt
-    markup = day._world.tg.markups[-1]
-    assert markup and ["/recommend dinner", "/recommend snack"] in markup["keyboard"]
-    assert markup["one_time_keyboard"] and "selective" not in markup
-
-    # Tapping a button sends its text as a normal command from the tapper.
-    reply = await day.recommend("@kabir", "dinner", group=True)
+async def case_rec_bare(day: Day) -> None:
+    """A bare /recommend gives a macro-aware suggestion for the current slot, with no keyboard."""
+    reply = await day.recommend("@kabir", group=True)
     assert "What to eat next" in reply, reply
+    assert day._world.tg.markups[-1] is None, day._world.tg.markups[-1]
 
 
 async def case_rec_fallback(day: Day) -> None:
@@ -678,7 +672,7 @@ CASES = {
     "rec_request": case_rec_request,
     "rec_today_only": case_rec_today_only,
     "rec_group_privacy": case_rec_group_privacy,
-    "rec_buttons": case_rec_buttons,
+    "rec_bare": case_rec_bare,
     "rec_fallback": case_rec_fallback,
     "rec_label_collision": case_rec_label_collision,
 }

@@ -127,19 +127,26 @@ def format_help(display_name: str) -> str:
     name = display_name or "there"
     return "\n".join(
         [
-            f"👋 Hi {escape(name, quote=False)}, here is what I can do in this chat:",
+            f"👋 Hi {escape(name, quote=False)}, I track what you eat.",
             "",
-            "📸 <b>Send a food photo</b> — I estimate the calories and log it.",
-            "<b>/intake</b> — log a meal in words; I look up the calories.",
-            "  e.g. <code>/intake 2 rotli and a katori of dal</code>",
-            "<b>/summary</b> — today's calorie total for this chat.",
-            "<b>/recommend</b> — suggest your next meal from your day and goal.",
-            "<b>/profile</b> — view your profile, or set it in plain words.",
-            "  e.g. <code>/profile 5ft9, 72 kg, vegetarian, lose fat</code>",
-            "<b>/context</b> — see your standing notes I respect in estimates.",
-            "  add or change one by writing it in plain words:",
-            "  e.g. <code>/context my chundo has no sugar</code>",
-            "<b>/deleteprofile</b> — delete everything I store about you.",
+            "📸 <b>Send a food photo to log a meal</b> — this is the main thing.",
+            "Add a caption for anything the picture cannot show — portion size, "
+            "how it was cooked, hidden sugar, e.g. "
+            "<i>two rotli with ghee and a big katori of dal</i>. "
+            "I estimate the calories and macros, then log it.",
+            "",
+            "<b>You can also:</b>",
+            "<blockquote>"
+            "<b>/intake</b> — log a meal in words, e.g. "
+            "<code>/intake 2 rotli and a katori of dal</code>\n"
+            "<b>/recommend</b> — a macro-aware idea for your next meal\n"
+            "<b>/summary</b> — today's calorie total for this chat\n"
+            "<b>/profile</b> — view or set it, e.g. "
+            "<code>/profile 5ft9, 72 kg, vegetarian, lose fat</code>\n"
+            "<b>/context</b> — standing notes I respect, e.g. "
+            "<code>/context my chundo has no sugar</code>\n"
+            "<b>/deleteprofile</b> — delete everything I store about you"
+            "</blockquote>",
             "",
             "Your profile is private to this chat and never shown in any group.",
         ]
