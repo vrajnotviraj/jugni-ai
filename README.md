@@ -184,7 +184,7 @@ ADMIN_API_SECRET=another-long-secret
 
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
 
-`YOUTUBE_API_KEY` is optional. When set, `/recommend` looks up a top recipe video (YouTube Data API v3, ranked by relevance) for the first option. Without it, recommendations ship without a video.
+`YOUTUBE_API_KEY` is optional. When set, `/recommend` attaches a recipe video to each option (YouTube Data API v3): it pulls the top ten results ordered by view count and picks one at random, so repeat suggestions for the same dish vary. Without it, recommendations ship without videos.
 
 `ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, `/api/profiles`, and `/api/telegram/simulate`. When it is set, send it as `X-Admin-API-Secret`.
 

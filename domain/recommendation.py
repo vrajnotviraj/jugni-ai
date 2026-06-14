@@ -28,13 +28,13 @@ class RecommendedMealOption:
     title: str
     calorie_range: str
     why: str
+    video_url: str = ""  # a recipe video for this dish, "" when none found
 
 
 @dataclass(frozen=True, slots=True)
 class MealRecommendationResult:
     because_today: str
     options: tuple[RecommendedMealOption, ...]
-    recipe_video_url: str = ""
     is_fallback: bool = False
 
 
