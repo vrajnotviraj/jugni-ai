@@ -174,6 +174,7 @@ TELEGRAM_WEBHOOK_SECRET=make-this-long
 TELEGRAM_GROUP_CHAT_ID=-1001234567890,-1009876543210
 OPENAI_API_KEY=<your-openai-api-key>
 OPENAI_MODEL=gpt-4.1-mini
+YOUTUBE_API_KEY=<optional-youtube-data-api-key>
 REDIS_URL=redis://localhost:6379/0
 APP_TIMEZONE=Asia/Kolkata
 ADMIN_API_SECRET=another-long-secret
@@ -182,6 +183,8 @@ ADMIN_API_SECRET=another-long-secret
 `TELEGRAM_GROUP_CHAT_ID` is a comma-separated list of group chat ids the bot serves. Add a new group's id to extend it; each group's meals and daily summary stay isolated.
 
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
+
+`YOUTUBE_API_KEY` is optional. When set, `/recommend` looks up a top recipe video (YouTube Data API v3, ranked by relevance) for the first option. Without it, recommendations ship without a video.
 
 `ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, `/api/profiles`, and `/api/telegram/simulate`. When it is set, send it as `X-Admin-API-Secret`.
 

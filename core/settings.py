@@ -15,6 +15,7 @@ class Settings:
     redis_url: str
     openai_api_key: str
     openai_model: str
+    youtube_api_key: str | None
     timezone: ZoneInfo
     admin_api_secret: str | None
     cron_secret: str | None
@@ -31,6 +32,7 @@ class Settings:
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             openai_api_key=_required_env("OPENAI_API_KEY"),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            youtube_api_key=(os.getenv("YOUTUBE_API_KEY") or "").strip() or None,
             timezone=ZoneInfo(os.getenv("APP_TIMEZONE", "Asia/Kolkata")),
             admin_api_secret=os.getenv("ADMIN_API_SECRET") or None,
             cron_secret=os.getenv("CRON_SECRET") or None,

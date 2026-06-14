@@ -39,16 +39,14 @@ def format_recommendation(
     ]
     for number, option in enumerate(result.options, start=1):
         lines.append("")
-        lines.append(f"<b>{number}. {escape(option.title, quote=False)}</b>")
+        lines.append(f"<b>{number} · {escape(option.title, quote=False)}</b>")
         lines.append(
-            f"<code>{escape(option.calorie_range, quote=False)}</code> · "
+            f"<code>{escape(option.calorie_range, quote=False)}</code>  "
             f"<i>{escape(option.why, quote=False)}</i>"
         )
     if result.recipe_video_url:
         lines.append("")
         lines.append(
-            f'▶ <a href="{escape(result.recipe_video_url)}">Top recipe video</a>'
+            f'▶ <a href="{escape(result.recipe_video_url)}">Watch the recipe</a>'
         )
-    lines.append("")
-    lines.append("<i>Rough estimates, not medical advice.</i>")
     return "\n".join(lines)

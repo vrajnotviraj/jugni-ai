@@ -6,11 +6,6 @@ _MAX_OPTIONS = 3
 _TITLE_MAX = 80
 _FIELD_MAX = 160
 _REQUIRED_FIELDS = ("title", "calorie_range", "why")
-_YOUTUBE_PREFIXES = (
-    "https://www.youtube.com/",
-    "https://youtube.com/",
-    "https://youtu.be/",
-)
 
 # The prompt asks for plain ASCII, but models still leak typographic
 # punctuation; normalising here is more reliable than more prompt rules.
@@ -55,18 +50,8 @@ def parse_recommendations(raw: str) -> MealRecommendationResult | None:
     return MealRecommendationResult(
         because_today=_clean_text(because, _FIELD_MAX),
         options=tuple(options),
-        recipe_video_url=_clean_youtube_url(payload.get("recipe_video_url")),
     )
 
 
 def _clean_text(value: str, cap: int) -> str:
     return value.translate(_ASCII_PUNCTUATION).strip()[:cap]
-
-
-def _clean_youtube_url(value: object) -> str:
-    if not isinstance(value, str):
-        return ""
-    url = value.strip()
-    if any(url.startswith(prefix) for prefix in _YOUTUBE_PREFIXES):
-        return url
-    return ""

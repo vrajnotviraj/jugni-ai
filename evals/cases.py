@@ -531,7 +531,10 @@ async def case_rec_today_only(day: Day) -> None:
     from workflows.build_recommendation_context import build_recommendation_context
 
     world = day._world
-    await day.seed_dish("@aarav", "Dal tadka with roti and sabzi", 500, days_ago=1)
+    # Two eating-days back so the seed stays in the past at any clock hour: a
+    # noon meal "one day ago" still shares the current eating day when the case
+    # runs before the DAY_START_HOUR (4 AM) rollover.
+    await day.seed_dish("@aarav", "Dal tadka with roti and sabzi", 500, days_ago=2)
     context = await build_recommendation_context(
         user_id=day._id("@aarav"),
         sender_label="@aarav",
@@ -601,19 +604,14 @@ async def case_rec_fallback(day: Day) -> None:
 
     assert parse_recommendations("not even json {{{") is None
     assert parse_recommendations('{"because_today": "x", "options": []}') is None
+    # Extra keys (request_take anchor, a stray field) are ignored, not rejected.
     parsed = parse_recommendations(
         '{"request_take":"next meal","because_today":"x",'
-        '"recipe_video_url":"https://youtu.be/abc","options":['
+        '"options":['
         '{"title":"Dal","calorie_range":"~300-400 kcal","why":"fits today"},'
         '{"title":"Chana","calorie_range":"~200-300 kcal","why":"fits today"}]}'
     )
-    assert parsed and parsed.recipe_video_url == "https://youtu.be/abc"
-    parsed = parse_recommendations(
-        '{"because_today":"x","recipe_video_url":"https://example.com/recipe","options":['
-        '{"title":"Dal","calorie_range":"~300-400 kcal","why":"fits today"},'
-        '{"title":"Chana","calorie_range":"~200-300 kcal","why":"fits today"}]}'
-    )
-    assert parsed and not parsed.recipe_video_url
+    assert parsed and len(parsed.options) == 2 and parsed.recipe_video_url == ""
     context = MealRecommendationContext(
         surface="dm",
         slot="dinner",
