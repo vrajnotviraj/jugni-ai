@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import dataclass, replace
 
@@ -8,10 +9,11 @@ from analyzers.recommend.prompts import (
     RECOMMEND_SYSTEM_PROMPT,
     recommend_user_prompt,
 )
-from analyzers.recommend.youtube import top_recipe_video
+from analyzers.recommend.youtube import recipe_video
 from domain.recommendation import (
     MealRecommendationContext,
     MealRecommendationResult,
+    RecommendedMealOption,
     fallback_recommendation,
 )
 from llm.openai_client import call_responses
@@ -21,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Recommender:
-    """Turns a precomputed context into meal options, then attaches a top
-    recipe video for the first option. Never raises: any API or parse failure
-    degrades to the deterministic rule-based fallback (R18)."""
+    """Turns a precomputed context into meal options, then attaches a recipe
+    video to each one (fetched concurrently). Never raises: any API or parse
+    failure degrades to the deterministic rule-based fallback (R18), and a
+    missing video just leaves that option without a link."""
 
     client: AsyncOpenAI
     model: str
@@ -33,8 +36,16 @@ class Recommender:
         self, context: MealRecommendationContext
     ) -> MealRecommendationResult:
         result = await self._suggest(context)
-        url = await top_recipe_video(result.options[0].title, self.youtube_api_key)
-        return replace(result, recipe_video_url=url)
+        options = await asyncio.gather(
+            *(self._with_video(option) for option in result.options)
+        )
+        return replace(result, options=tuple(options))
+
+    async def _with_video(
+        self, option: RecommendedMealOption
+    ) -> RecommendedMealOption:
+        url = await recipe_video(option.title, self.youtube_api_key)
+        return replace(option, video_url=url)
 
     async def _suggest(
         self, context: MealRecommendationContext

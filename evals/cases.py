@@ -605,7 +605,8 @@ async def case_rec_fallback(day: Day) -> None:
         '{"title":"Dal","calorie_range":"~300-400 kcal","why":"fits today"},'
         '{"title":"Chana","calorie_range":"~200-300 kcal","why":"fits today"}]}'
     )
-    assert parsed and len(parsed.options) == 2 and parsed.recipe_video_url == ""
+    assert parsed and len(parsed.options) == 2
+    assert all(option.video_url == "" for option in parsed.options)
     context = MealRecommendationContext(
         surface="dm",
         slot="dinner",
