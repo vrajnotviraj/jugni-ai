@@ -88,7 +88,11 @@ async def call_responses(
         cache_key,
     )
     if route.service_tier is not None:
-        flex_client = client.with_options(timeout=route.timeout)
+        # max_retries=0: a flex timeout means flex is congested, so the SDK's
+        # default retries would just re-hit the same slow lane and stack another
+        # full timeout each (45s -> ~135s before we ever fall back). One attempt,
+        # then trip the breaker and fall through to primary.
+        flex_client = client.with_options(timeout=route.timeout, max_retries=0)
         try:
             response = await flex_client.responses.create(
                 service_tier=route.service_tier, **kwargs
