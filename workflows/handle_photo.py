@@ -31,7 +31,7 @@ ANALYSIS_FAILED_REPLY = (
 # OOM, a crash before the meal could be marked FAILED). Comfortably above the
 # worst-case processing time (download + flex-tier analysis + cold start) so a
 # meal that is genuinely still in flight is never reprocessed underneath itself.
-_STALE_RESERVATION_SECONDS = 180
+_STALE_RESERVATION_SECONDS = 5 * 60
 
 
 async def handle_photo(
