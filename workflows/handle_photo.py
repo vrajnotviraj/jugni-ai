@@ -26,11 +26,9 @@ ANALYSIS_FAILED_REPLY = (
     "⚠️ Couldn't read that one. Try a clearer, well-lit photo of the plate."
 )
 
-# A PENDING reservation older than this is treated as abandoned — the attempt
-# that reserved it died before reaching a terminal state (function timeout/kill,
-# OOM, a crash before the meal could be marked FAILED). Comfortably above the
-# worst-case processing time (download + flex-tier analysis + cold start) so a
-# meal that is genuinely still in flight is never reprocessed underneath itself.
+# A PENDING reservation older than this is treated as abandoned (its attempt
+# died before reaching a terminal state). Well above worst-case processing time
+# so a meal still genuinely in flight is never reprocessed underneath itself.
 _STALE_RESERVATION_SECONDS = 5 * 60
 
 
@@ -93,12 +91,10 @@ async def handle_photo(
                     photo.message_id,
                 )
                 raise PhotoStillProcessing
-            # The first attempt reserved this meal but never reached a terminal
-            # state — it died mid-flight. Without this, every Telegram retry would
-            # raise PhotoStillProcessing forever (the reservation has no TTL). Treat
-            # a long-stale reservation as abandoned and fall through to re-process:
-            # complete()/mark_failed() below overwrite the dead PENDING, and webhook
-            # dedupe stops the retries once one attempt acks.
+            # The reserving attempt died mid-flight; the reservation has no TTL,
+            # so without this every retry raises PhotoStillProcessing forever.
+            # Fall through to re-process — complete()/mark_failed() overwrite the
+            # dead PENDING, and dedupe stops retries once one attempt acks.
             logger.info(
                 "photo reservation stale msg=%s; reprocessing", photo.message_id
             )
@@ -156,12 +152,9 @@ async def handle_photo(
         await repo.complete(photo, extraction)
 
     try:
-        # The download runs under this guard alongside the analysis: a failure in
-        # either must mark the meal FAILED and reply, never leave it stuck PENDING.
-        # A reserved-but-PENDING meal makes every Telegram retry raise
-        # PhotoStillProcessing forever (the getFile ReadTimeout that surfaced
-        # this) — no live task will ever finish the reservation, so the retry
-        # must instead find a terminal state and ack.
+        # The download runs under this guard too: a failure here must mark the
+        # meal FAILED and reply, never leave it stuck PENDING for retries to spin
+        # on. download_file already retries transient stalls before giving up.
         image_bytes, media_type = await _ensure_image_bytes(
             telegram, photo, image_bytes, media_type
         )
@@ -326,9 +319,8 @@ def _content_hash(image_bytes: bytes) -> str:
 
 
 def _reservation_is_stale(photo: Photo) -> bool:
-    # The Telegram message time doubles as the reservation clock: the webhook
-    # reserves within ~a second of delivery, so for any meal that reaches the
-    # PENDING-repeat branch sent_at is effectively when we reserved.
+    # sent_at doubles as the reservation clock — the webhook reserves within ~a
+    # second of delivery, so it tracks when we reserved closely enough.
     age = datetime.now(tz=UTC) - photo.sent_at
     return age.total_seconds() > _STALE_RESERVATION_SECONDS
 

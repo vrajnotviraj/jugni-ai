@@ -1,9 +1,16 @@
+import asyncio
 import logging
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# Telegram's file API intermittently stalls (connection opens, no response) and
+# only surfaces as a ReadTimeout after the timeout. A fresh connection almost
+# always works, so the download is retried on a tight per-attempt timeout.
+_DOWNLOAD_ATTEMPTS = 3
+_DOWNLOAD_TIMEOUT = 20.0
 
 
 class TelegramApiError(RuntimeError):
@@ -41,12 +48,27 @@ class TelegramBotApi:
         return body.get("result", [])
 
     async def download_file(self, file_id: str) -> tuple[bytes, str]:
-        file_path = await self._get_file_path(file_id)
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self._file_base_url}/{file_path}")
-            response.raise_for_status()
-            return response.content, media_type_for_path(file_path)
+        # getFile and the file fetch share one retry budget, so a stall in either
+        # step is re-attempted from scratch on a fresh connection. A real HTTP
+        # status (e.g. bad file_id) propagates without retrying.
+        last_exc: httpx.TransportError | None = None
+        for attempt in range(1, _DOWNLOAD_ATTEMPTS + 1):
+            try:
+                file_path = await self._get_file_path(file_id)
+                content = await self._get_file_bytes(file_path)
+                return content, media_type_for_path(file_path)
+            except httpx.TransportError as exc:
+                last_exc = exc
+                logger.warning(
+                    "telegram download attempt %s/%s failed: %s",
+                    attempt,
+                    _DOWNLOAD_ATTEMPTS,
+                    exc,
+                )
+                if attempt < _DOWNLOAD_ATTEMPTS:
+                    await asyncio.sleep(0.5 * attempt)
+        assert last_exc is not None
+        raise last_exc
 
     async def send_message(
         self,
@@ -228,17 +250,21 @@ class TelegramBotApi:
         return body
 
     async def _get_file_path(self, file_id: str) -> str:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT) as client:
             response = await client.get(
-                f"{self._base_url}/getFile",
-                params={"file_id": file_id},
+                f"{self._base_url}/getFile", params={"file_id": file_id}
             )
             response.raise_for_status()
-
         payload = response.json()
         if not payload.get("ok"):
             raise TelegramApiError(f"Telegram getFile failed: {payload}")
         return payload["result"]["file_path"]
+
+    async def _get_file_bytes(self, file_path: str) -> bytes:
+        async with httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT) as client:
+            response = await client.get(f"{self._file_base_url}/{file_path}")
+            response.raise_for_status()
+        return response.content
 
 
 def media_type_for_path(path: str) -> str:
