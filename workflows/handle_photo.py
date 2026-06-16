@@ -1,6 +1,5 @@
 import hashlib
 import logging
-from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from analyzers.image.factory import ImageEstimator
@@ -85,16 +84,17 @@ async def handle_photo(
         # once it's done; if it already finished, the duplicate reply above handled
         # it, so just ack.
         if await repo.status(photo) == PhotoStatus.PENDING:
-            if not _reservation_is_stale(photo):
+            if not await repo.claim_if_stale(
+                photo, max_age_seconds=_STALE_RESERVATION_SECONDS
+            ):
                 logger.info(
                     "photo still processing msg=%s; signalling retry",
                     photo.message_id,
                 )
                 raise PhotoStillProcessing
-            # The reserving attempt died mid-flight; the reservation has no TTL,
-            # so without this every retry raises PhotoStillProcessing forever.
-            # Fall through to re-process — complete()/mark_failed() overwrite the
-            # dead PENDING, and dedupe stops retries once one attempt acks.
+            # The reserving attempt died mid-flight (the reservation has no TTL).
+            # claim_if_stale re-stamped it so a concurrent retry backs off; re-process
+            # now — complete()/mark_failed() overwrite the dead PENDING.
             logger.info(
                 "photo reservation stale msg=%s; reprocessing", photo.message_id
             )
@@ -316,13 +316,6 @@ async def _ensure_image_bytes(
 
 def _content_hash(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
-
-
-def _reservation_is_stale(photo: Photo) -> bool:
-    # sent_at doubles as the reservation clock — the webhook reserves within ~a
-    # second of delivery, so it tracks when we reserved closely enough.
-    age = datetime.now(tz=UTC) - photo.sent_at
-    return age.total_seconds() > _STALE_RESERVATION_SECONDS
 
 
 async def _send_placeholder(telegram: TelegramBotApi, photo: Photo) -> int | None:

@@ -42,14 +42,29 @@ class RedisPhotoRepository:
         # we fall back to the app-timezone bucket only when it does not (e.g. a
         # senderless upload or a caller without profile access).
         day_key = day_key or self._day_key(photo)
-        await self._redis.hset(
-            photo_key, mapping=photo_to_hash(photo, day_key, content_hash=content_hash)
-        )
+        mapping = photo_to_hash(photo, day_key, content_hash=content_hash)
+        mapping["reserved_at"] = datetime.now(tz=UTC).isoformat()
+        await self._redis.hset(photo_key, mapping=mapping)
         await self._redis.sadd(_chat_day_key(photo.chat_id, day_key), photo.message_id)
         await self._redis.sadd(
             _user_day_key(photo.chat_id, day_key, photo.sender_label),
             photo.message_id,
         )
+        return True
+
+    async def claim_if_stale(self, photo: Photo, *, max_age_seconds: float) -> bool:
+        # A PENDING reservation older than max_age is treated as abandoned — its
+        # attempt was killed before reaching a terminal state. Re-stamp reserved_at
+        # and return True so the caller reprocesses; a concurrent retry then sees a
+        # fresh reservation and backs off, so a meal is never processed twice.
+        key = _photo_key(photo.chat_id, photo.message_id)
+        reserved_at = _safe_datetime(await self._redis.hget(key, "reserved_at"))
+        # Pre-existing keys (reserved before this field shipped) fall back to
+        # sent_at, which is old enough that they self-heal on the next retry.
+        reserved_at = reserved_at or photo.sent_at
+        if (datetime.now(tz=UTC) - reserved_at).total_seconds() <= max_age_seconds:
+            return False
+        await self._redis.hset(key, "reserved_at", datetime.now(tz=UTC).isoformat())
         return True
 
     async def duplicate_analysis(

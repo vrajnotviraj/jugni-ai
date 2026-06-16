@@ -20,6 +20,16 @@ class PhotoRepository(Protocol):
         ``content_hash`` lets local/manual uploads dedupe exact same image bytes.
         """
 
+    async def claim_if_stale(self, photo: Photo, *, max_age_seconds: float) -> bool:
+        """Re-claim a stale PENDING reservation so it can be reprocessed.
+
+        Returns True (and re-stamps the reservation clock) when the meal has been
+        PENDING longer than ``max_age_seconds`` — its original attempt died before
+        finishing. Returns False when the reservation is still fresh, so the caller
+        signals a retry instead. Re-stamping makes a concurrent retry back off, so a
+        reprocessed meal is never analysed or replied to twice.
+        """
+
     async def duplicate_analysis(
         self,
         photo: Photo,
