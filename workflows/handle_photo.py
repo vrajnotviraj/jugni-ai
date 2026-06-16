@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from analyzers.image.factory import ImageEstimator
@@ -24,6 +25,13 @@ ANALYSING_REPLY = "🔍 Analysing your meal…"
 ANALYSIS_FAILED_REPLY = (
     "⚠️ Couldn't read that one. Try a clearer, well-lit photo of the plate."
 )
+
+# A PENDING reservation older than this is treated as abandoned — the attempt
+# that reserved it died before reaching a terminal state (function timeout/kill,
+# OOM, a crash before the meal could be marked FAILED). Comfortably above the
+# worst-case processing time (download + flex-tier analysis + cold start) so a
+# meal that is genuinely still in flight is never reprocessed underneath itself.
+_STALE_RESERVATION_SECONDS = 180
 
 
 async def handle_photo(
@@ -79,12 +87,24 @@ async def handle_photo(
         # once it's done; if it already finished, the duplicate reply above handled
         # it, so just ack.
         if await repo.status(photo) == PhotoStatus.PENDING:
+            if not _reservation_is_stale(photo):
+                logger.info(
+                    "photo still processing msg=%s; signalling retry",
+                    photo.message_id,
+                )
+                raise PhotoStillProcessing
+            # The first attempt reserved this meal but never reached a terminal
+            # state — it died mid-flight. Without this, every Telegram retry would
+            # raise PhotoStillProcessing forever (the reservation has no TTL). Treat
+            # a long-stale reservation as abandoned and fall through to re-process:
+            # complete()/mark_failed() below overwrite the dead PENDING, and webhook
+            # dedupe stops the retries once one attempt acks.
             logger.info(
-                "photo still processing msg=%s; signalling retry", photo.message_id
+                "photo reservation stale msg=%s; reprocessing", photo.message_id
             )
-            raise PhotoStillProcessing
-        logger.info("photo already stored, skipping msg=%s", photo.message_id)
-        return None
+        else:
+            logger.info("photo already stored, skipping msg=%s", photo.message_id)
+            return None
 
     # Acknowledge the photo immediately, then edit this same message into the
     # finished card once analysis returns — so the chat shows progress instead
@@ -303,6 +323,14 @@ async def _ensure_image_bytes(
 
 def _content_hash(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
+
+
+def _reservation_is_stale(photo: Photo) -> bool:
+    # The Telegram message time doubles as the reservation clock: the webhook
+    # reserves within ~a second of delivery, so for any meal that reaches the
+    # PENDING-repeat branch sent_at is effectively when we reserved.
+    age = datetime.now(tz=UTC) - photo.sent_at
+    return age.total_seconds() > _STALE_RESERVATION_SECONDS
 
 
 async def _send_placeholder(telegram: TelegramBotApi, photo: Photo) -> int | None:
