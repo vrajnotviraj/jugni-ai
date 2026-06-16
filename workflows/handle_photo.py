@@ -129,10 +129,6 @@ async def handle_photo(
         photo.sender_label,
     )
 
-    image_bytes, media_type = await _ensure_image_bytes(
-        telegram, photo, image_bytes, media_type
-    )
-
     async def _persist_extraction(extraction: FoodAnalysis) -> None:
         # Save the objective result and mark the meal "done" the moment extraction
         # lands, so a repeat delivery sees a finished meal while the tip pass is
@@ -140,6 +136,15 @@ async def handle_photo(
         await repo.complete(photo, extraction)
 
     try:
+        # The download runs under this guard alongside the analysis: a failure in
+        # either must mark the meal FAILED and reply, never leave it stuck PENDING.
+        # A reserved-but-PENDING meal makes every Telegram retry raise
+        # PhotoStillProcessing forever (the getFile ReadTimeout that surfaced
+        # this) — no live task will ever finish the reservation, so the retry
+        # must instead find a terminal state and ack.
+        image_bytes, media_type = await _ensure_image_bytes(
+            telegram, photo, image_bytes, media_type
+        )
         analysis = await image_estimator(
             image_bytes,
             media_type,
