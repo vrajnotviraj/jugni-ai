@@ -1,6 +1,7 @@
 import base64
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 
 from openai import AsyncOpenAI
 
@@ -14,10 +15,12 @@ from analyzers.image.coaching import (
 from analyzers.image.extraction import (
     FOOD_EXTRACTION_RESPONSE_FORMAT,
     FOOD_EXTRACTION_SYSTEM_PROMPT,
+    CalorieEstimationError,
     food_extraction_user_prompt,
     parse_meal_extraction,
 )
 from analyzers.image.preprocess import downscale_image
+from analyzers.search.grounding import nutrition_grounding
 from domain.analysis import CoachingTip, FoodAnalysis, MealExtraction
 from llm.openai_client import call_responses
 
@@ -44,6 +47,7 @@ async def analyse_image(
     personal_goal: str | None = None,
     protein_so_far_g: int | None = None,
     protein_target_g: int | None = None,
+    tavily_api_key: str | None = None,
     on_extracted: ExtractionHook | None = None,
 ) -> FoodAnalysis:
     # Two passes: an objective vision extraction (numbers only, no goals or diet),
@@ -56,12 +60,13 @@ async def analyse_image(
     # evals, API routes) benefits. Best-effort: it falls back to the original
     # bytes on any failure.
     image_bytes, media_type = downscale_image(image_bytes, media_type)
+    image_data_url = _image_data_url(image_bytes, media_type)
     raw_extraction = await call_responses(
         client,
         model=model,
         system=FOOD_EXTRACTION_SYSTEM_PROMPT,
         user=food_extraction_user_prompt(caption),
-        image_data_url=_image_data_url(image_bytes, media_type),
+        image_data_url=image_data_url,
         # `auto` lets the patch model size its own budget. We already cap the
         # longest side at 1024px in preprocess (the real cost control for a
         # patch-tokenised model), so forcing `high` only pins the maximum patch
@@ -71,6 +76,24 @@ async def analyse_image(
         cache_key="food-extraction",
     )
     extraction = parse_meal_extraction(raw_extraction)
+    # When the plate read is unsure (a packaged or unfamiliar item the vision pass
+    # could not pin down), web-search the dish and re-read with those facts in the
+    # prompt — the on-demand "tool call". Best-effort: any miss keeps the first read.
+    snippets = await nutrition_grounding(extraction, tavily_api_key)
+    if snippets:
+        logger.info("image grounding via web search dish=%s", extraction.dish)
+        raw_grounded = await call_responses(
+            client,
+            model=model,
+            system=FOOD_EXTRACTION_SYSTEM_PROMPT,
+            user=food_extraction_user_prompt(caption, web_context=snippets),
+            image_data_url=image_data_url,
+            image_detail="auto",
+            response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
+            cache_key="food-extraction",
+        )
+        with suppress(CalorieEstimationError):
+            extraction = parse_meal_extraction(raw_grounded)
     # Hand the objective result to the caller before the coaching pass: this is the
     # point the meal can be saved and marked "done" (the tip is best-effort and lands
     # later via set_tip).

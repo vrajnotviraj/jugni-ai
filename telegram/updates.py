@@ -267,14 +267,17 @@ def _parse_delete_command(message: dict[str, Any]) -> "DeleteCommand | None":
     if _leading_command(message) != "/delete":
         return None
 
+    # Any replied-to message can be a logged meal: a photo, or a typed /intake
+    # (keyed on its own message id). Deletion no-ops if the target isn't a meal.
     replied = message.get("reply_to_message") or {}
-    if not replied.get("photo"):
+    target = replied.get("message_id")
+    if target is None:
         return None
 
     sender = message.get("from") or {}
     return DeleteCommand(
         chat_id=int(message["chat"]["id"]),
-        target_message_id=int(replied["message_id"]),
+        target_message_id=int(target),
         requester_sender_id=sender.get("id"),
     )
 

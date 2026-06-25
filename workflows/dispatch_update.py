@@ -222,8 +222,8 @@ async def _dispatch_private(parsed: ParsedUpdate, *, deps: Dependencies) -> None
 
 async def _dispatch_intake(command: IntakeCommand, *, deps: Dependencies) -> None:
     """Route /intake; both surfaces share this arm. A typed meal always calls the
-    LLM (extraction + web search + coaching), so it is charged here, before any
-    work; a bare /intake only sends the usage hint and is free."""
+    LLM (extraction + coaching), so it is charged here, before any work; a bare
+    /intake only sends the usage hint and is free."""
     if command.text.strip() and not await _allow_llm_command(
         deps, command.user_id, command.chat_id
     ):

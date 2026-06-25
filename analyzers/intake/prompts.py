@@ -12,16 +12,16 @@ Estimate from the typed description only. Do not use personal goals, dietary fac
 Most descriptions are Indian home or restaurant food, often Gujarati, with some Western and packaged food.
 </scope>
 
-<web_search>
-Always use web search to ground the calorie count of the described items, especially packaged or branded foods, named restaurant dishes, and anything whose per-portion calories you are not sure of. Search for the specific item and portion (for example "almonds 10g calories", "Amul dark chocolate per block calories"). Prefer the figure that matches the stated brand and portion; when sources disagree, use a sensible mid-range value and lower confidence.
-</web_search>
+<grounding>
+Ground every calorie and macro figure in authoritative, reputed nutrition data you already know: official packaged-food labels and brand nutrition panels for packaged or branded items, and established food-composition references (USDA-style values, standard Indian food nutrition tables) for home and restaurant dishes. Match the figure to the stated brand and portion (for example a 10g serving of almonds, or one block of Amul dark chocolate). When your recollection is uncertain or reputable values vary, use a sensible lower-middle figure and lower confidence rather than guessing high.
+</grounding>
 
 <estimation>
 Work in this order:
 1. Decide whether the text describes food. If not, return is_food=false with zero calories and macros.
 2. Split the description into individual items joined by "+", "and", commas, or "with".
 3. For each item, read the quantity and unit the user gave (grams, pieces, blocks, katori, cup, glass, spoon, plate). When no quantity is given, assume one typical serving and say so in items. Treat vague count-words (a block, a piece, a square, a bowl, a plate) WITHOUT a stated weight as ONE small standard serving, never a large one: a block or square of chocolate is ~5-10g (40-60 kcal), not a whole bar. When the plausible range for an item is wide, use the lower-middle value and drop confidence to medium or low.
-4. Look up or recall the calories and macros for each item at that portion, using web search per <web_search>.
+4. Recall the calories and macros for each item at that portion from authoritative nutrition references per <grounding>.
 5. Sum the per-item calories into one integer; the calories field must equal the sum of the kcal you list in items. Sanity-check against common anchors: one rotli 70-90 kcal, ghee rotli +20-30 kcal, cooked rice cup 200-240 kcal, dal or sabzi katori 150-250 kcal, 10g almonds ~60 kcal, one block or square of chocolate 40-60 kcal, fried snacks or mithai often 150+ kcal per piece.
 6. Estimate integer macros for the same food. Grains, sweets, and sugary drinks are carb-heavy. Dal, legumes, sprouts, tofu, paneer, eggs, chicken, and fish add protein. Paneer, full-fat dairy, fried food, coconut, nuts, and rich gravies add fat and saturated fat. Vegetables and legumes add fibre.
 </estimation>
@@ -41,10 +41,21 @@ Work in this order:
 </rules>"""
 
 
-def intake_extraction_user_prompt(text: str) -> str:
+def intake_extraction_user_prompt(text: str, web_context: str | None = None) -> str:
     description = (text or "").strip()
-    return (
+    parts = [
         "The user typed what they ate. Estimate the intake_extraction JSON described in "
-        "the system prompt, searching the web for calorie counts as instructed.\n"
-        f"What they ate: {json.dumps(description, ensure_ascii=True)}."
-    )
+        "the system prompt, grounding calorie counts as instructed.",
+        f"What they ate: {json.dumps(description, ensure_ascii=True)}.",
+    ]
+    if web_context and web_context.strip():
+        parts.append(
+            "<web_context>\n"
+            f"{web_context.strip()}\n"
+            "</web_context>\n"
+            "These are fresh web search results for the items above. Use them to "
+            "correct calories and macros for the stated brand and portion; prefer "
+            "them over your own recollection when they match the item, and raise "
+            "confidence when they pin the figure down. Ignore anything off-topic."
+        )
+    return "\n".join(parts)

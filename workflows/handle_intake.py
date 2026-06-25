@@ -13,7 +13,7 @@ from presenters.photo_reply import (
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
-from telegram.api import TelegramBotApi
+from telegram.api import REMOVE_KEYBOARD, TelegramBotApi
 from telegram.updates import IntakeCommand
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
@@ -239,6 +239,7 @@ async def _send_placeholder(
             chat_id=command.chat_id,
             text=LOGGING_REPLY,
             reply_to_message_id=command.message_id,
+            reply_markup=REMOVE_KEYBOARD,
         )
     except Exception:
         logger.exception(

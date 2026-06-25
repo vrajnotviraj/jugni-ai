@@ -16,6 +16,7 @@ def build_image_estimator(
 ) -> ImageEstimator:
     openai_client = client or AsyncOpenAI(api_key=settings.openai_api_key)
     model = settings.openai_model
+    tavily_api_key = settings.tavily_api_key
 
     async def estimator(
         image_bytes: bytes,
@@ -44,6 +45,7 @@ def build_image_estimator(
             personal_goal=personal_goal,
             protein_so_far_g=protein_so_far_g,
             protein_target_g=protein_target_g,
+            tavily_api_key=tavily_api_key,
             on_extracted=on_extracted,
         )
 
