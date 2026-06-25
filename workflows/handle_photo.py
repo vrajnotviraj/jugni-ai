@@ -14,7 +14,7 @@ from presenters.photo_reply import (
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
-from telegram.api import REMOVE_KEYBOARD, TelegramBotApi
+from telegram.api import TelegramBotApi
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
@@ -325,7 +325,6 @@ async def _send_placeholder(telegram: TelegramBotApi, photo: Photo) -> int | Non
             chat_id=photo.chat_id,
             text=ANALYSING_REPLY,
             reply_to_message_id=photo.message_id,
-            reply_markup=REMOVE_KEYBOARD,
         )
     except Exception:
         logger.exception(

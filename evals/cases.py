@@ -589,7 +589,8 @@ async def case_rec_bare(day: Day) -> None:
     """A bare /recommend gives a macro-aware suggestion for the current slot, with no keyboard."""
     reply = await day.recommend("@kabir", group=True)
     assert "What to eat next" in reply, reply
-    # No slot keyboard is offered; the ack only clears the retired one.
+    # No slot keyboard is offered; the placeholder ack carries no markup so it
+    # stays editable in place.
     last = day._world.tg.markups[-1]
     assert last is None or "keyboard" not in last, last
 

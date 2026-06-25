@@ -19,7 +19,7 @@ from presenters.recommend_reply import (
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
-from telegram.api import REMOVE_KEYBOARD, TelegramBotApi
+from telegram.api import TelegramBotApi
 from telegram.updates import RecommendCommand
 from workflows.build_recommendation_context import build_recommendation_context
 
@@ -100,7 +100,6 @@ async def _send_placeholder(
             chat_id=chat_id,
             text=GENERATING_REPLY,
             reply_to_message_id=reply_to_message_id,
-            reply_markup=REMOVE_KEYBOARD,
         )
     except Exception:
         logger.exception("recommend placeholder send failed chat=%s", chat_id)

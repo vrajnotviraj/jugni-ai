@@ -13,12 +13,6 @@ _DOWNLOAD_ATTEMPTS = 3
 _DOWNLOAD_TIMEOUT = 20.0
 
 
-# Clears a stale persistent reply keyboard (the retired /recommend slot menu)
-# from a chat. Attached to the next ack a user receives so the leftover keyboard
-# disappears on their next interaction; a no-op once no keyboard is set.
-REMOVE_KEYBOARD = {"remove_keyboard": True}
-
-
 class TelegramApiError(RuntimeError):
     pass
 

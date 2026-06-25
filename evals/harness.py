@@ -82,8 +82,14 @@ class _Telegram:
         # The placeholder→edit flow overwrites the message in place; mirror that
         # so `sent[-1]` reflects the finished card, not the "Analysing…" stub.
         index = self._index_by_id.get(message_id)
-        if index is not None:
-            self.sent[index] = text
+        if index is None:
+            return
+        # Telegram refuses to edit a message that was sent with a reply-keyboard
+        # markup (e.g. remove_keyboard); reproduce that so a placeholder carrying
+        # one is caught here instead of only in prod.
+        if self.markups[index] is not None:
+            raise RuntimeError("message can't be edited")
+        self.sent[index] = text
 
     async def delete_message(self, *_: object, **__: object) -> None:
         pass
