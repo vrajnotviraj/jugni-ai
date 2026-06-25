@@ -10,6 +10,7 @@ from analyzers.recommend.prompts import (
     recommend_user_prompt,
 )
 from analyzers.recommend.youtube import recipe_video
+from analyzers.search.grounding import recipe_inspiration
 from domain.recommendation import (
     MealRecommendationContext,
     MealRecommendationResult,
@@ -31,6 +32,7 @@ class Recommender:
     client: AsyncOpenAI
     model: str
     youtube_api_key: str | None = None
+    tavily_api_key: str | None = None
 
     async def __call__(
         self, context: MealRecommendationContext
@@ -50,12 +52,20 @@ class Recommender:
     async def _suggest(
         self, context: MealRecommendationContext
     ) -> MealRecommendationResult:
+        # Pull fresh recipe ideas to widen the options before suggesting; "" when
+        # there is no key or the search fails, so the prompt just omits the block.
+        inspiration = await recipe_inspiration(
+            slot=context.slot,
+            user_request=context.user_request,
+            dietary=context.dietary,
+            api_key=self.tavily_api_key,
+        )
         try:
             raw = await call_responses(
                 self.client,
                 model=self.model,
                 system=RECOMMEND_SYSTEM_PROMPT,
-                user=recommend_user_prompt(context),
+                user=recommend_user_prompt(context, web_context=inspiration),
                 cache_key="recommend",
             )
             result = parse_recommendations(raw)

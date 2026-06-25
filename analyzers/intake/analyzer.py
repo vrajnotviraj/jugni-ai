@@ -18,17 +18,11 @@ from analyzers.intake.prompts import (
     INTAKE_EXTRACTION_SYSTEM_PROMPT,
     intake_extraction_user_prompt,
 )
+from analyzers.search.grounding import nutrition_grounding
 from domain.analysis import FoodAnalysis
 from llm.openai_client import call_responses
 
 logger = logging.getLogger(__name__)
-
-# A low-cost web search so the extractor can ground branded/packaged calorie
-# counts, matching the recommend analyzer's tool config.
-_WEB_SEARCH_TOOL = {
-    "type": "web_search",
-    "search_context_size": "low",
-}
 
 
 async def analyse_intake(
@@ -43,22 +37,42 @@ async def analyse_intake(
     personal_goal: str | None = None,
     protein_so_far_g: int | None = None,
     protein_target_g: int | None = None,
+    tavily_api_key: str | None = None,
     on_extracted: ExtractionHook | None = None,
 ) -> FoodAnalysis:
     # Same two passes as the photo path: an objective text extraction (numbers
-    # only, grounded by web search), then the shared text-only coaching pass.
-    # Reusing the photo schema, parser, and coaching keeps a typed meal's output
-    # identical in shape to a photographed one.
+    # only, grounded in the model's own nutrition knowledge), then the shared
+    # text-only coaching pass. Reusing the photo schema, parser, and coaching
+    # keeps a typed meal's output identical in shape to a photographed one.
     raw_extraction = await call_responses(
         client,
         model=model,
         system=INTAKE_EXTRACTION_SYSTEM_PROMPT,
         user=intake_extraction_user_prompt(text),
-        tools=[_WEB_SEARCH_TOOL],
         response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
         cache_key="intake-extraction",
     )
     extraction = parse_meal_extraction(raw_extraction)
+    # When that first pass is unsure, web-search the dish and re-extract with the
+    # fresh facts in hand (the on-demand "tool call"). Best-effort: no key, no
+    # snippets, or a re-parse failure all keep the first estimate.
+    snippets = await nutrition_grounding(extraction, tavily_api_key)
+    if snippets:
+        logger.info("intake grounding via web search dish=%s", extraction.dish)
+        # Best-effort: a failed or unparseable grounding pass keeps the first
+        # estimate — search never breaks the normal path.
+        try:
+            raw_grounded = await call_responses(
+                client,
+                model=model,
+                system=INTAKE_EXTRACTION_SYSTEM_PROMPT,
+                user=intake_extraction_user_prompt(text, web_context=snippets),
+                response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
+                cache_key="intake-extraction",
+            )
+            extraction = parse_meal_extraction(raw_grounded)
+        except Exception as error:
+            logger.warning("intake grounding re-extraction failed: %s", error)
     # Hand the objective result to the caller before coaching; for a typed meal the
     # caller persists it only when it's loggable (food + confident enough), so the
     # rejected branches below still store nothing.

@@ -400,6 +400,7 @@ async def case_intake_routing(day: Day) -> None:
     summary = parse_update(dm({"message_id": 2, "from": sender, "text": "/summary"}))
     profile = parse_update(dm({"message_id": 3, "from": sender, "text": "/profile vegetarian"}))
     delete = parse_update(dm({"message_id": 4, "from": sender, "text": "/delete", "reply_to_message": {"message_id": 1, "photo": [{"file_id": "f"}]}}))
+    delete_intake = parse_update(dm({"message_id": 7, "from": sender, "text": "/delete", "reply_to_message": {"message_id": 5, "text": "/intake 10g almonds"}}))
     intake_dm = parse_update(dm({"message_id": 5, "date": 1, "from": sender, "text": "/intake 10g almonds"}))
     intake_group = parse_update({"update_id": 0, "message": {"message_id": 6, "date": 1, "chat": {"id": -100, "type": "supergroup"}, "from": sender, "text": "/intake paneer"}})
 
@@ -407,9 +408,11 @@ async def case_intake_routing(day: Day) -> None:
     assert isinstance(summary, SummaryCommand), summary
     assert isinstance(profile, ProfileCommand), profile
     assert isinstance(delete, DeleteCommand), delete
+    assert isinstance(delete_intake, DeleteCommand) and delete_intake.target_message_id == 5, delete_intake
     assert isinstance(intake_dm, IntakeCommand) and intake_dm.surface == "dm", intake_dm
     assert isinstance(intake_group, IntakeCommand) and intake_group.surface == "group", intake_group
     day._say("DM photo/summary/delete route to the group loop; /profile stays private")
+    day._say("/delete works on a reply to a typed /intake, not just photos")
     day._say("/intake parses on both surfaces with the right surface tag")
 
 
@@ -586,7 +589,9 @@ async def case_rec_bare(day: Day) -> None:
     """A bare /recommend gives a macro-aware suggestion for the current slot, with no keyboard."""
     reply = await day.recommend("@kabir", group=True)
     assert "What to eat next" in reply, reply
-    assert day._world.tg.markups[-1] is None, day._world.tg.markups[-1]
+    # No slot keyboard is offered; the ack only clears the retired one.
+    last = day._world.tg.markups[-1]
+    assert last is None or "keyboard" not in last, last
 
 
 async def case_rec_fallback(day: Day) -> None:

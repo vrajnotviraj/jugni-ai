@@ -28,7 +28,7 @@ Work in this order:
 3. Confidence is "high" for a clear single dish with clear portion, "medium" for mixed plates or partly unclear portions, and "low" for blurry, dim, unfamiliar, or no-scale photos.
 4. added_sugar_g counts added or processed sugar only: jaggery in dal, sugar in chai, syrup, biscuits, soft drinks, sweets, jam, chhundo. It excludes fruit, plain milk, and plain curd.
 5. sat_fat_g is the saturated-fat portion of fat_g and must be <= fat_g.
-6. Generic home food should not require web search. Use your nutrition knowledge and visible evidence.
+6. Use your nutrition knowledge and the visible evidence. When a <web_context> block is provided, treat it as fresh search results for this dish: prefer it for the figures it pins down (a named brand or packaged item) and raise confidence accordingly; ignore anything that does not match the plate.
 7. The items array must show the reasoning behind the total in plain short strings, including hidden oil or sugar when relevant, and any uncertainty (no scale reference, hidden oil likely, caption conflicts with the image).
 </rules>"""
 
@@ -70,7 +70,9 @@ FOOD_EXTRACTION_RESPONSE_FORMAT = {
 }
 
 
-def food_extraction_user_prompt(caption: str | None) -> str:
+def food_extraction_user_prompt(
+    caption: str | None, web_context: str | None = None
+) -> str:
     parts = [
         "Analyze the attached image and return the food_extraction JSON described in the system prompt."
     ]
@@ -79,5 +81,13 @@ def food_extraction_user_prompt(caption: str | None) -> str:
         parts.append(
             "Caption from the user, strongest hint for dish or portion: "
             f"{json.dumps(caption, ensure_ascii=True)}."
+        )
+    if web_context and web_context.strip():
+        parts.append(
+            "<web_context>\n"
+            f"{web_context.strip()}\n"
+            "</web_context>\n"
+            "These are fresh web search results for this dish (rule 6). Use them to "
+            "refine the figures they pin down; ignore anything off the plate."
         )
     return "\n".join(parts)

@@ -30,17 +30,16 @@ async def call_responses(
     user: str,
     image_data_url: str | None = None,
     image_detail: str = "high",
-    tools: list[dict[str, object]] | None = None,
     response_format: dict[str, object] | None = None,
     cache_key: str | None = None,
     cache_retention: str | None = "24h",
 ) -> str:
     # OpenAI prompt caching is automatic for prompts >= 1024 tokens and works on an
-    # exact-prefix match. Keep all static content (tools + the large system prompt)
-    # at the front and every dynamic part (the user text and the image) last, so the
+    # exact-prefix match. Keep all static content (the large system prompt) at the
+    # front and every dynamic part (the user text and the image) last, so the
     # stable prefix is reused across requests. Do not interpolate per-request values
-    # (caption, time, prior meals, the image) into `system` or `tools` or the cache
-    # is busted on every call.
+    # (caption, time, prior meals, the image) into `system` or the cache is busted
+    # on every call.
     user_content: list[dict[str, object]] = [{"type": "input_text", "text": user}]
     if image_data_url is not None:
         user_content.append(
@@ -58,8 +57,6 @@ async def call_responses(
             {"role": "user", "content": user_content},
         ],
     }
-    if tools:
-        kwargs["tools"] = tools
     if response_format:
         kwargs["text"] = {"format": response_format}
     # `prompt_cache_key` makes routing sticky so same-type requests land on the same

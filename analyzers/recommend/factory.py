@@ -13,4 +13,5 @@ def build_recommender(
         client=openai_client,
         model=settings.openai_model,
         youtube_api_key=settings.youtube_api_key,
+        tavily_api_key=settings.tavily_api_key,
     )

@@ -175,6 +175,7 @@ TELEGRAM_GROUP_CHAT_ID=-1001234567890,-1009876543210
 OPENAI_API_KEY=<your-openai-api-key>
 OPENAI_MODEL=gpt-4.1-mini
 YOUTUBE_API_KEY=<optional-youtube-data-api-key>
+TAVILY_API_KEY=<optional-tavily-api-key>
 REDIS_URL=redis://localhost:6379/0
 APP_TIMEZONE=Asia/Kolkata
 ADMIN_API_SECRET=another-long-secret
@@ -185,6 +186,8 @@ ADMIN_API_SECRET=another-long-secret
 `TELEGRAM_WEBHOOK_SECRET` protects the Telegram webhook.
 
 `YOUTUBE_API_KEY` is optional. When set, `/recommend` attaches a recipe video to each option (YouTube Data API v3): it pulls the top ten results ordered by view count and picks one at random, so repeat suggestions for the same dish vary. Without it, recommendations ship without videos.
+
+`TAVILY_API_KEY` is optional. When set, the bot reaches for web search as an on-demand tool: it re-grounds an *uncertain* calorie estimate (a low/medium-confidence photo or `/intake`) with fresh nutrition facts, and feeds creative recipe ideas into `/recommend` alongside the day's context. The search never blocks the result — if the key is missing, Tavily is down, or credits are exhausted, every path falls back to the model's own knowledge exactly as before.
 
 `ADMIN_API_SECRET` protects the manual API routes: `/api/upload`, `/api/summary`, `/api/backfill`, `/api/meals`, `/api/profiles`, and `/api/telegram/simulate`. When it is set, send it as `X-Admin-API-Secret`.
 
