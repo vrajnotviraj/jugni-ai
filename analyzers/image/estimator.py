@@ -1,7 +1,6 @@
 import base64
 import logging
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 
 from openai import AsyncOpenAI
 
@@ -15,7 +14,6 @@ from analyzers.image.coaching import (
 from analyzers.image.extraction import (
     FOOD_EXTRACTION_RESPONSE_FORMAT,
     FOOD_EXTRACTION_SYSTEM_PROMPT,
-    CalorieEstimationError,
     food_extraction_user_prompt,
     parse_meal_extraction,
 )
@@ -82,18 +80,22 @@ async def analyse_image(
     snippets = await nutrition_grounding(extraction, tavily_api_key)
     if snippets:
         logger.info("image grounding via web search dish=%s", extraction.dish)
-        raw_grounded = await call_responses(
-            client,
-            model=model,
-            system=FOOD_EXTRACTION_SYSTEM_PROMPT,
-            user=food_extraction_user_prompt(caption, web_context=snippets),
-            image_data_url=image_data_url,
-            image_detail="auto",
-            response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
-            cache_key="food-extraction",
-        )
-        with suppress(CalorieEstimationError):
+        # Best-effort: a failed or unparseable grounding pass keeps the first read
+        # (so on_extracted still runs) — search never breaks the normal path.
+        try:
+            raw_grounded = await call_responses(
+                client,
+                model=model,
+                system=FOOD_EXTRACTION_SYSTEM_PROMPT,
+                user=food_extraction_user_prompt(caption, web_context=snippets),
+                image_data_url=image_data_url,
+                image_detail="auto",
+                response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
+                cache_key="food-extraction",
+            )
             extraction = parse_meal_extraction(raw_grounded)
+        except Exception as error:
+            logger.warning("image grounding re-extraction failed: %s", error)
     # Hand the objective result to the caller before the coaching pass: this is the
     # point the meal can be saved and marked "done" (the tip is best-effort and lands
     # later via set_tip).

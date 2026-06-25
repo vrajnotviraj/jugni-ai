@@ -16,11 +16,14 @@ logger = logging.getLogger(__name__)
 _SEARCH_URL = "https://api.tavily.com/search"
 
 
-async def web_search(query: str, api_key: str | None, *, max_results: int = 3) -> str:
+async def web_search(
+    query: str, api_key: str | None, *, max_results: int = 3, timeout: float = 10.0
+) -> str:
     """A compact snippet block for ``query``, or "" when unavailable.
 
     Uses Tavily's synthesized ``answer`` (when present) followed by the leading
     result contents, so the calling prompt gets grounded facts without raw HTML.
+    ``timeout`` bounds the whole call so a slow Tavily never stalls a user reply.
     """
     if not api_key or not query.strip():
         return ""
@@ -31,7 +34,7 @@ async def web_search(query: str, api_key: str | None, *, max_results: int = 3) -
         "include_answer": True,
     }
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 _SEARCH_URL,
                 json=payload,
@@ -39,8 +42,9 @@ async def web_search(query: str, api_key: str | None, *, max_results: int = 3) -
             )
         response.raise_for_status()
         data = response.json()
-    except Exception:
-        logger.exception("tavily search failed query=%s", query)
+    except Exception as error:
+        # Never log the query: it can carry the user's free-form request text.
+        logger.warning("tavily search failed: %s", type(error).__name__)
         return ""
 
     lines: list[str] = []

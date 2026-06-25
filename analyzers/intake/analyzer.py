@@ -1,5 +1,4 @@
 import logging
-from contextlib import suppress
 
 from openai import AsyncOpenAI
 
@@ -13,7 +12,6 @@ from analyzers.image.coaching import (
 from analyzers.image.estimator import ExtractionHook, merge_food_analysis
 from analyzers.image.extraction import (
     FOOD_EXTRACTION_RESPONSE_FORMAT,
-    CalorieEstimationError,
     parse_meal_extraction,
 )
 from analyzers.intake.prompts import (
@@ -61,16 +59,20 @@ async def analyse_intake(
     snippets = await nutrition_grounding(extraction, tavily_api_key)
     if snippets:
         logger.info("intake grounding via web search dish=%s", extraction.dish)
-        raw_grounded = await call_responses(
-            client,
-            model=model,
-            system=INTAKE_EXTRACTION_SYSTEM_PROMPT,
-            user=intake_extraction_user_prompt(text, web_context=snippets),
-            response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
-            cache_key="intake-extraction",
-        )
-        with suppress(CalorieEstimationError):
+        # Best-effort: a failed or unparseable grounding pass keeps the first
+        # estimate — search never breaks the normal path.
+        try:
+            raw_grounded = await call_responses(
+                client,
+                model=model,
+                system=INTAKE_EXTRACTION_SYSTEM_PROMPT,
+                user=intake_extraction_user_prompt(text, web_context=snippets),
+                response_format=FOOD_EXTRACTION_RESPONSE_FORMAT,
+                cache_key="intake-extraction",
+            )
             extraction = parse_meal_extraction(raw_grounded)
+        except Exception as error:
+            logger.warning("intake grounding re-extraction failed: %s", error)
     # Hand the objective result to the caller before coaching; for a typed meal the
     # caller persists it only when it's loggable (food + confident enough), so the
     # rejected branches below still store nothing.
