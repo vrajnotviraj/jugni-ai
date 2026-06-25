@@ -83,6 +83,10 @@ class RedisPhotoRepository:
         # `smembers` is unordered; walk newest-first so a match is deterministic
         # when the same image was posted more than once in the day.
         for message_id in sorted((int(m) for m in message_ids), reverse=True):
+            # A webhook retry of this same message is not a deliberate re-send;
+            # matching it against itself would fire a second reply for one meal.
+            if message_id == photo.message_id:
+                continue
             raw = await self._redis.hgetall(_photo_key(photo.chat_id, message_id))
             if _same_photo(raw, photo, content_hash):
                 analysis = analysis_from_hash(raw)

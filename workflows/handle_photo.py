@@ -340,7 +340,7 @@ async def _deliver(
     placeholder_id: int | None,
 ) -> None:
     """Show the finished card: edit the placeholder in place, or send fresh when
-    there was no placeholder (duplicate replies) or the edit fails."""
+    there was no placeholder or the edit fails."""
     if placeholder_id is not None:
         try:
             await telegram.edit_message_text(
