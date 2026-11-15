@@ -7,11 +7,7 @@ from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
-from presenters.photo_reply import (
-    format_photo_reply,
-    format_photo_reply_rich,
-    format_streak_line,
-)
+from presenters.photo_reply import format_photo_replies, format_streak_line
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
@@ -261,19 +257,18 @@ async def _reply_with_analysis(
             sender_label=photo.sender_label,
         )
         protein_today_g = sum(stored.protein_g for stored in photos)
-    card = dict(
-        sender_label=photo.sender_label,
-        analysis=analysis,
-        daily_total=daily_total,
+    classic, rich = format_photo_replies(
+        photo.sender_label,
+        analysis,
+        daily_total,
         streak_line=streak_line,
         eaten_at=eaten_at,
         calorie_target=target,
         protein_today_g=protein_today_g,
         protein_target_g=protein_target_g,
     )
-    reply = Reply(format_photo_reply(**card), format_photo_reply_rich(**card))
     await finish_loading(
-        telegram, photo.chat_id, photo.message_id, placeholder_id, reply
+        telegram, photo.chat_id, photo.message_id, placeholder_id, Reply(classic, rich)
     )
 
 

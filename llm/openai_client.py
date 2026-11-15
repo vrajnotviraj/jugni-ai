@@ -77,7 +77,7 @@ async def call_responses(
         kwargs["prompt_cache_retention"] = "24h"
     # Reasoning models default to medium effort; low keeps cost and latency down
     # for these extraction-style calls. Non-reasoning models (gpt-4.1) reject it.
-    if model.startswith(_REASONING_PREFIXES):
+    if model.startswith(_REASONING_PREFIXES) and "-chat" not in model:
         kwargs["reasoning"] = {"effort": "low"}
 
     # The smart router picks the route: the flex tier when this model supports it

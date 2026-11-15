@@ -6,11 +6,7 @@ from core.dates import day_key_for_datetime
 from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
-from presenters.photo_reply import (
-    format_photo_reply,
-    format_photo_reply_rich,
-    format_streak_line,
-)
+from presenters.photo_reply import format_photo_replies, format_streak_line
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
@@ -58,7 +54,9 @@ async def handle_intake(
 ) -> FoodAnalysis | None:
     text = command.text.strip()
     if not text:
-        await _deliver(telegram, command, USAGE_REPLY, None)
+        await finish_loading(
+            telegram, command.chat_id, command.message_id, None, Reply(USAGE_REPLY)
+        )
         return None
 
     # Mirror the photo path: resolve the profile first so the meal buckets into
@@ -91,7 +89,7 @@ async def handle_intake(
 
     async def _discard() -> None:
         # Best-effort, like the placeholder/streak guards: a cleanup failure must
-        # never skip the user's reply below (which _deliver sends right after).
+        # never skip the user's reply below (which finish_loading sends right after).
         try:
             await repo.delete_meal(chat_id=photo.chat_id, message_id=photo.message_id)
         except Exception:
@@ -154,7 +152,13 @@ async def handle_intake(
             command.message_id,
         )
         await _discard()
-        await _deliver(telegram, command, INTAKE_FAILED_REPLY, placeholder_id)
+        await finish_loading(
+            telegram,
+            command.chat_id,
+            command.message_id,
+            placeholder_id,
+            Reply(INTAKE_FAILED_REPLY),
+        )
         return None
 
     logger.info(
@@ -171,11 +175,23 @@ async def handle_intake(
     # nothing for these, so discard the reservation to leave no trace in the tally.
     if not analysis.is_food:
         await _discard()
-        await _deliver(telegram, command, NOT_FOOD_REPLY, placeholder_id)
+        await finish_loading(
+            telegram,
+            command.chat_id,
+            command.message_id,
+            placeholder_id,
+            Reply(NOT_FOOD_REPLY),
+        )
         return analysis
     if analysis.confidence == "low":
         await _discard()
-        await _deliver(telegram, command, LOW_CONFIDENCE_REPLY, placeholder_id)
+        await finish_loading(
+            telegram,
+            command.chat_id,
+            command.message_id,
+            placeholder_id,
+            Reply(LOW_CONFIDENCE_REPLY),
+        )
         return analysis
 
     # Extraction was saved and the meal marked "done" via the hook; attach the tip.
@@ -188,18 +204,23 @@ async def handle_intake(
     # Reinforce the streak only on the first meal of the local day; `prior` was
     # read before this meal was stored, so empty means this is the first.
     streak_line = await _streak_line(repo, photo, day_key) if not prior else None
-    card = dict(
-        sender_label=command.sender_label,
-        analysis=analysis,
-        daily_total=daily_total,
+    classic, rich = format_photo_replies(
+        command.sender_label,
+        analysis,
+        daily_total,
         streak_line=streak_line,
         eaten_at=eaten_at_label,
         calorie_target=target,
         protein_today_g=protein_so_far + max(0, analysis.protein_g),
         protein_target_g=protein_target,
     )
-    reply = Reply(format_photo_reply(**card), format_photo_reply_rich(**card))
-    await _deliver(telegram, command, reply, placeholder_id)
+    await finish_loading(
+        telegram,
+        command.chat_id,
+        command.message_id,
+        placeholder_id,
+        Reply(classic, rich),
+    )
     return analysis
 
 
@@ -243,16 +264,3 @@ async def _streak_line(
             "streak line failed msg=%s; replying without it", photo.message_id
         )
         return None
-
-
-async def _deliver(
-    telegram: TelegramBotApi,
-    command: IntakeCommand,
-    reply: Reply | str,
-    placeholder_id: int | None,
-) -> None:
-    if isinstance(reply, str):
-        reply = Reply(reply)
-    await finish_loading(
-        telegram, command.chat_id, command.message_id, placeholder_id, reply
-    )

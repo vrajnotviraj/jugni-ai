@@ -65,6 +65,33 @@ def test_finish_sends_rich_then_deletes_placeholder():
     assert tg.calls == [("rich", "<h3>x</h3>"), ("delete", 99)]
 
 
+def test_finish_keeps_placeholder_when_every_send_fails():
+    class AllFail(FakeTelegram):
+        async def send_message(self, chat_id, text, **kwargs):
+            raise RuntimeError("telegram down")
+
+    tg = AllFail(rich_fails=True)
+    asyncio.run(finish_loading(tg, 1, 10, 99, Reply("plain", "<h3>x</h3>")))
+    assert tg.calls == []
+
+
+def test_finish_sends_classic_with_preview_when_no_rich():
+    sent = {}
+
+    class Recording(FakeTelegram):
+        async def send_message(self, chat_id, text, **kwargs):
+            sent.update(kwargs)
+            self.calls.append(("text", text))
+
+    tg = Recording()
+    preview = {"is_disabled": False}
+    asyncio.run(finish_loading(tg, 1, 10, 99, Reply("plain", None, preview)))
+    assert tg.calls == [("text", "plain"), ("delete", 99)]
+    assert sent["parse_mode"] == "HTML"
+    assert sent["link_preview_options"] == preview
+    assert sent["reply_to_message_id"] == 10
+
+
 def test_finish_falls_back_to_classic_when_rich_fails():
     tg = FakeTelegram(rich_fails=True)
     asyncio.run(finish_loading(tg, 1, 10, 99, Reply("plain", "<h3>x</h3>")))

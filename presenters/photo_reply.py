@@ -76,6 +76,29 @@ def format_photo_reply(
     return "\n\n".join("\n".join(group) for group in groups)
 
 
+def format_photo_replies(
+    sender_label: str,
+    analysis: FoodAnalysis,
+    daily_total: int,
+    *,
+    streak_line: str | None,
+    eaten_at: str | None,
+    calorie_target: int | None,
+    protein_today_g: int | None,
+    protein_target_g: int | None,
+) -> tuple[str, str | None]:
+    """(classic HTML card, rich HTML card or None) for the same meal."""
+    args = (sender_label, analysis, daily_total)
+    kwargs = dict(
+        streak_line=streak_line,
+        eaten_at=eaten_at,
+        calorie_target=calorie_target,
+        protein_today_g=protein_today_g,
+        protein_target_g=protein_target_g,
+    )
+    return format_photo_reply(*args, **kwargs), format_photo_reply_rich(*args, **kwargs)
+
+
 def format_photo_reply_rich(
     sender_label: str,
     analysis: FoodAnalysis,
