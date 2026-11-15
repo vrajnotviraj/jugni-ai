@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from domain.analysis import FoodAnalysis
 from telegram.api import TelegramBotApi
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,10 @@ async def start_loading(
     except Exception:
         logger.exception("loading text send failed chat=%s", chat_id)
         return None
+
+
+def progress_caption(extraction: FoodAnalysis) -> str:
+    return f"✅ {extraction.dish} · {extraction.calories} kcal\n✍️ Writing your tip…"
 
 
 async def update_loading(

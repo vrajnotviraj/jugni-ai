@@ -152,8 +152,6 @@ class TelegramBotApi:
     async def send_rich_message(
         self, chat_id: int, html: str, reply_to_message_id: int | None = None
     ) -> int | None:
-        """Send a Bot API 10.1 rich message (headings, tables, details) and
-        return its ``message_id`` (None in dry-run)."""
         if self._dry_run:
             print(f"\n[DRY-RUN telegram] sendRichMessage chat_id={chat_id}\n{html}\n")
             return None
@@ -176,8 +174,6 @@ class TelegramBotApi:
         caption: str,
         reply_to_message_id: int | None = None,
     ) -> int | None:
-        """Send a GIF from ``path`` and return its ``message_id``. The first send
-        uploads the file; later sends reuse Telegram's ``file_id``."""
         if self._dry_run:
             print(f"\n[DRY-RUN telegram] sendAnimation chat_id={chat_id} {caption}\n")
             return None
@@ -198,15 +194,7 @@ class TelegramBotApi:
             response = await client.post(
                 f"{self._base_url}/sendAnimation", data=data, files=files
             )
-        try:
-            body = response.json()
-        except ValueError:
-            body = {"raw": response.text}
-        if response.status_code >= 400 or not body.get("ok", False):
-            description = body.get("description") or response.text
-            raise TelegramApiError(
-                f"Telegram sendAnimation failed ({response.status_code}): {description}"
-            )
+        body = _parse("sendAnimation", response)
         result = body.get("result", {})
         sent = result.get("animation") or result.get("document") or {}
         if sent.get("file_id"):
@@ -277,16 +265,7 @@ class TelegramBotApi:
                 f"{self._base_url}/sendDocument", data=data, files=files
             )
 
-        try:
-            body = response.json()
-        except ValueError:
-            body = {"raw": response.text}
-
-        if response.status_code >= 400 or not body.get("ok", False):
-            description = body.get("description") or response.text
-            raise TelegramApiError(
-                f"Telegram sendDocument failed ({response.status_code}): {description}"
-            )
+        _parse("sendDocument", response)
 
     async def set_my_commands(
         self,
@@ -315,17 +294,7 @@ class TelegramBotApi:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(f"{self._base_url}/{method}", json=payload)
 
-        try:
-            body = response.json()
-        except ValueError:
-            body = {"raw": response.text}
-
-        if response.status_code >= 400 or not body.get("ok", False):
-            description = body.get("description") or response.text
-            raise TelegramApiError(
-                f"Telegram {method} failed ({response.status_code}): {description}"
-            )
-        return body
+        return _parse(method, response)
 
     async def _get_file_path(self, file_id: str) -> str:
         async with httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT) as client:
@@ -343,6 +312,19 @@ class TelegramBotApi:
             response = await client.get(f"{self._file_base_url}/{file_path}")
             response.raise_for_status()
         return response.content
+
+
+def _parse(method: str, response: httpx.Response) -> dict:
+    try:
+        body = response.json()
+    except ValueError:
+        body = {"raw": response.text}
+    if response.status_code >= 400 or not body.get("ok", False):
+        description = body.get("description") or response.text
+        raise TelegramApiError(
+            f"Telegram {method} failed ({response.status_code}): {description}"
+        )
+    return body
 
 
 def media_type_for_path(path: str) -> str:

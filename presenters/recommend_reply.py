@@ -2,8 +2,6 @@ from html import escape
 
 from domain.recommendation import MealRecommendationResult
 
-RECOMMEND_REPLY_PARSE_MODE = "HTML"
-
 
 def recommend_link_preview(result: MealRecommendationResult) -> dict:
     """The LinkPreviewOptions for the reply (Bot API). Every option carries its

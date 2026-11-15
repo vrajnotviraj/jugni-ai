@@ -42,8 +42,6 @@ async def handle_recommend_command(
     # Replying to the command threads the conversation in groups.
     reply_to = command.message_id if is_group else None
 
-    # Acknowledge immediately with a loading GIF, replaced by the finished card
-    # once the suggestion (and its recipe videos) return.
     placeholder_id = await start_loading(
         telegram, command.chat_id, reply_to, GENERATING_REPLY
     )

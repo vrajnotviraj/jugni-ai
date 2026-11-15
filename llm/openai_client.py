@@ -125,7 +125,6 @@ async def call_responses(
 
 
 def _log_usage(response: object, cache_key: str | None) -> None:
-    """Log input/cached tokens so prompt-cache hit rate is visible in logs."""
     usage = getattr(response, "usage", None)
     if usage is None:
         return

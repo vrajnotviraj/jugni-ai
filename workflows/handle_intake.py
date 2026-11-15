@@ -15,7 +15,13 @@ from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import IntakeCommand
-from workflows.loading_reply import Reply, finish_loading, start_loading, update_loading
+from workflows.loading_reply import (
+    Reply,
+    finish_loading,
+    progress_caption,
+    start_loading,
+    update_loading,
+)
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
@@ -126,8 +132,7 @@ async def handle_intake(
                 telegram,
                 command.chat_id,
                 placeholder_id,
-                f"✅ {extraction.dish} · {extraction.calories} kcal\n"
-                "✍️ Writing your tip…",
+                progress_caption(extraction),
             )
 
     try:

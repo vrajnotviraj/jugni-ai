@@ -15,7 +15,13 @@ from presenters.photo_reply import (
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
-from workflows.loading_reply import Reply, finish_loading, start_loading, update_loading
+from workflows.loading_reply import (
+    Reply,
+    finish_loading,
+    progress_caption,
+    start_loading,
+    update_loading,
+)
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
@@ -103,8 +109,6 @@ async def handle_photo(
             logger.info("photo already stored, skipping msg=%s", photo.message_id)
             return None
 
-    # Acknowledge the photo immediately with a loading GIF whose caption tracks
-    # progress, so the chat shows activity instead of silence during the calls.
     placeholder_id = await start_loading(
         telegram, photo.chat_id, photo.message_id, ANALYSING_REPLY
     )
@@ -157,8 +161,7 @@ async def handle_photo(
                 telegram,
                 photo.chat_id,
                 placeholder_id,
-                f"✅ {extraction.dish} · {extraction.calories} kcal\n"
-                "✍️ Writing your tip…",
+                progress_caption(extraction),
             )
 
     try:

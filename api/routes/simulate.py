@@ -120,6 +120,20 @@ class _CapturingTelegram:
         )
         return len(self.replies)  # 1-based id == index + 1
 
+    async def send_rich_message(self, chat_id: int, html: str, *_: object) -> int:
+        return await self.send_message(chat_id, html)
+
+    # The loading GIF isn't captured: id 0 makes its caption edit and the
+    # delete after the reply no-ops.
+    async def send_animation(self, *_: object, **__: object) -> int:
+        return 0
+
+    async def edit_message_caption(self, *_: object, **__: object) -> None:
+        pass
+
+    async def delete_message(self, *_: object, **__: object) -> None:
+        pass
+
     async def edit_message_text(
         self, chat_id: int, message_id: int, text: str, **_kwargs: object
     ) -> None:

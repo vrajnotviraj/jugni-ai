@@ -274,7 +274,6 @@ def _block(meals: dict, user: str) -> dict | None:
 
 
 def _plain(text: str) -> str:
-    # Rich-message block tags become line breaks so the judge sees the layout.
     text = re.sub(r"<(?:br|/p|/h\d|/tr|/li|/summary|/blockquote)[^>]*>", "\n", text)
     text = re.sub(r"</t[hd]>", " | ", text)
     return re.sub(r"<[^>]+>", "", text).strip()

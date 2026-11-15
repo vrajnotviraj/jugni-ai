@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 
 NOT_FOOD_REPLY = "Doesn't look like food. Send a food photo to get a calorie estimate."
 
-PHOTO_REPLY_PARSE_MODE = "HTML"
-
 _CONFIDENCE_ICONS = {"medium": "⚖️", "low": "❓"}
 
 
