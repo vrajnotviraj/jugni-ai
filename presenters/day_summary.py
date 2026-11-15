@@ -45,6 +45,58 @@ def format_day_summary_chunks(report: DayReport) -> list[str]:
     return chunks
 
 
+def format_day_summary_rich(report: DayReport) -> str | None:
+    """The day summary as Bot API 10.1 rich HTML: a leaderboard table, then one
+    collapsible section per person. None when nobody logged a meal."""
+    if not report.users:
+        return None
+    rows = "".join(
+        "<tr>"
+        f'<td align="center">{_rank_icon(u.rank)}</td>'
+        f"<td>{escape(u.sender_label, quote=False)}</td>"
+        f'<td align="center">{_score_emoji(u.health_score)} {u.health_score}/10</td>'
+        f'<td align="right">{u.calories}</td>'
+        f'<td align="center">{u.meal_periods_covered}/3</td>'
+        f'<td align="center">{f"🔥 {u.streak}d" if u.streak > 0 else "–"}</td>'
+        "</tr>"
+        for u in report.users
+    )
+    parts = [
+        f"<h3>🏆 Healthiest eaters today · {len(report.users)} 👥</h3>",
+        "<table bordered striped><tr><th>#</th><th>Who</th><th>Score</th>"
+        f"<th>kcal</th><th>Meals</th><th>Streak</th></tr>{rows}</table>",
+    ]
+    for user in report.users:
+        parts.append(_rich_user_details(user))
+    return "".join(parts)
+
+
+def _rich_user_details(user: UserDaySummary) -> str:
+    body = []
+    try:
+        macro_line = _macro_line(user)
+    except Exception:
+        logger.exception("macro line rendering failed; omitting it from the summary")
+        macro_line = None
+    if macro_line:
+        body.append(f"<p>{macro_line}</p>")
+    if user.meals_timeline:
+        meals = "".join(
+            f"<li><code>{meal.time or '--:--'}</code> "
+            f"{escape(meal.dish, quote=False)} — {meal.calories} kcal</li>"
+            for meal in user.meals_timeline
+        )
+        body.append(f"<ul>{meals}</ul>")
+    summary = (user.summary or "").strip()
+    if summary:
+        body.append(f"<blockquote>{escape(summary, quote=False)}</blockquote>")
+    title = (
+        f"{_rank_icon(user.rank)} {escape(user.sender_label, quote=False)}"
+        f" · {user.calories} kcal"
+    )
+    return f"<details><summary>{title}</summary>{''.join(body)}</details>"
+
+
 def _build_sections(report: DayReport) -> list[str]:
     sections: list[str] = [f"🏆 <b>Healthiest eaters today</b> · {len(report.users)} 👥"]
     for user in report.users:

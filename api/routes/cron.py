@@ -49,6 +49,10 @@ async def daily_summary_cron(
             day_iso=None,
             timezone=settings.timezone,
         )
+        if not report.users:
+            # Nobody logged a meal today: stay silent rather than post an empty board.
+            logger.info("cron daily-summary skipped chat=%s: no meals", chat_id)
+            continue
         await send_day_report(telegram=telegram, report=report)
         logger.info(
             "cron daily-summary sent chat=%s day=%s", report.chat_id, report.day_key
