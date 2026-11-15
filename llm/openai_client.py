@@ -6,6 +6,11 @@ from llm.smart_router import pick_route, report_unavailable
 
 logger = logging.getLogger(__name__)
 
+# Models on the GPT-5.6+ caching API (prompt_cache_options.ttl).
+_TTL_CACHE_PREFIXES = ("gpt-6", "gpt-5.6")
+# Reasoning models that accept the `reasoning` parameter.
+_REASONING_PREFIXES = ("gpt-5", "gpt-6", "o3", "o4")
+
 
 def _flex_unavailable(exc: APITimeoutError | APIStatusError) -> bool:
     """True when an error means "flex can't serve this" — so mark flex down.
@@ -32,7 +37,6 @@ async def call_responses(
     image_detail: str = "high",
     response_format: dict[str, object] | None = None,
     cache_key: str | None = None,
-    cache_retention: str | None = "24h",
 ) -> str:
     # OpenAI prompt caching is automatic for prompts >= 1024 tokens and works on an
     # exact-prefix match. Keep all static content (the large system prompt) at the
@@ -60,13 +64,21 @@ async def call_responses(
     if response_format:
         kwargs["text"] = {"format": response_format}
     # `prompt_cache_key` makes routing sticky so same-type requests land on the same
-    # warm engine; `prompt_cache_retention="24h"` keeps the prefix cached for a day
-    # instead of the default ~5-60 min in-memory window, which matters for a bot that
-    # receives photos sporadically through the day.
+    # warm engine (on GPT-5.6+ it also splits cache accounting per call type).
     if cache_key:
         kwargs["prompt_cache_key"] = cache_key
-    if cache_retention:
-        kwargs["prompt_cache_retention"] = cache_retention
+    # Long cache lifetime matters for a bot that receives photos sporadically
+    # through the day. GPT-5.6+ (incl. gpt-6-luna) replaced prompt_cache_retention
+    # with prompt_cache_options.ttl ("30m" default, or "12h"); older models take
+    # "24h". extra_body: the installed SDK predates prompt_cache_options.
+    if model.startswith(_TTL_CACHE_PREFIXES):
+        kwargs["extra_body"] = {"prompt_cache_options": {"ttl": "12h"}}
+    else:
+        kwargs["prompt_cache_retention"] = "24h"
+    # Reasoning models default to medium effort; low keeps cost and latency down
+    # for these extraction-style calls. Non-reasoning models (gpt-4.1) reject it.
+    if model.startswith(_REASONING_PREFIXES):
+        kwargs["reasoning"] = {"effort": "low"}
 
     # The smart router picks the route: the flex tier when this model supports it
     # and flex is healthy, else the primary tier. A flex route carries a longer
@@ -94,6 +106,7 @@ async def call_responses(
             response = await flex_client.responses.create(
                 service_tier=route.service_tier, **kwargs
             )
+            _log_usage(response, cache_key)
             return response.output_text
         except (APITimeoutError, APIStatusError) as exc:
             if not _flex_unavailable(exc):
@@ -107,4 +120,20 @@ async def call_responses(
             await report_unavailable(route)
 
     response = await client.responses.create(**kwargs)
+    _log_usage(response, cache_key)
     return response.output_text
+
+
+def _log_usage(response: object, cache_key: str | None) -> None:
+    """Log input/cached tokens so prompt-cache hit rate is visible in logs."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    details = getattr(usage, "input_tokens_details", None)
+    logger.info(
+        "llm usage: cache_key=%s input=%s cached=%s output=%s",
+        cache_key,
+        usage.input_tokens,
+        getattr(details, "cached_tokens", 0),
+        usage.output_tokens,
+    )

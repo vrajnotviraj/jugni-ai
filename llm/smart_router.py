@@ -35,7 +35,7 @@ COOLDOWN_SECONDS = 30 * 60
 # gpt-4.1) reject service_tier=flex with a 400, so we never route them through it.
 # Matched as id prefixes so date-stamped ids (gpt-5.4-2026-03-05) are covered.
 # Extend as OpenAI widens flex availability.
-FLEX_MODEL_PREFIXES = ("gpt-5", "o3", "o4-mini")
+FLEX_MODEL_PREFIXES = ("gpt-5", "gpt-6", "o3", "o4-mini")
 
 
 def supports_flex(model: str) -> bool:

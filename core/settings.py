@@ -34,7 +34,7 @@ class Settings:
             telegram_dry_run=_bool_env("TELEGRAM_DRY_RUN"),
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             openai_api_key=_required_env("OPENAI_API_KEY"),
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-6-luna"),
             openai_flex_enabled=_bool_env("OPENAI_FLEX_ENABLED", default=True),
             openai_flex_timeout=float(os.getenv("OPENAI_FLEX_TIMEOUT", "45")),
             youtube_api_key=(os.getenv("YOUTUBE_API_KEY") or "").strip() or None,
