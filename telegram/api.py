@@ -190,7 +190,8 @@ class TelegramBotApi:
             data["animation"] = file_id
         else:
             files = {"animation": (path.name, path.read_bytes(), "image/gif")}
-        async with httpx.AsyncClient(timeout=30) as client:
+        # Short: a stalled upload must fall back to the text placeholder quickly.
+        async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(
                 f"{self._base_url}/sendAnimation", data=data, files=files
             )

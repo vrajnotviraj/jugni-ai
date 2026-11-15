@@ -15,7 +15,7 @@ class FakeTelegram:
             raise RuntimeError("Bad Request: can't parse rich message")
         self.calls.append(("rich", html))
 
-    async def send_message(self, chat_id, text, reply_to=None, **kwargs):
+    async def send_message(self, chat_id, text, **kwargs):
         self.calls.append(("text", text))
 
     async def delete_message(self, chat_id, message_id):

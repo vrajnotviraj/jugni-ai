@@ -115,7 +115,7 @@ def format_photo_reply_rich(
             f"{gauge[0]} <b>Protein</b> {protein_today_g}g"
             f"{_bar(protein_today_g or 0, protein_target_g)}"
         )
-    parts.append(f"<p>{'<br>'.join(progress)}</p>")
+    parts.extend(f"<p>{line}</p>" for line in progress)
 
     items = [item for item in analysis.items if item.strip()]
     if items:
@@ -150,7 +150,7 @@ def _macro_table(analysis: FoodAnalysis) -> str:
         head.append(f"{icon} {label}")
         pct = f" · {shares[label]}%" if label in shares else ""
         body.append(f"{grams}g{pct}")
-    th = "".join(f'<th align="center">{h}</th>' for h in head)
+    th = "".join(f"<th>{h}</th>" for h in head)
     td = "".join(f'<td align="center">{b}</td>' for b in body)
     return f"<table bordered striped><tr>{th}</tr><tr>{td}</tr></table>"
 

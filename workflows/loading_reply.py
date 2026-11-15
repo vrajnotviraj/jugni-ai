@@ -36,7 +36,9 @@ async def start_loading(
     except Exception:
         logger.exception("loading gif send failed chat=%s", chat_id)
     try:
-        return await telegram.send_message(chat_id, caption, reply_to)
+        return await telegram.send_message(
+            chat_id, caption, reply_to_message_id=reply_to
+        )
     except Exception:
         logger.exception("loading text send failed chat=%s", chat_id)
         return None
@@ -79,7 +81,7 @@ async def finish_loading(
             await telegram.send_message(
                 chat_id,
                 reply.text,
-                reply_to,
+                reply_to_message_id=reply_to,
                 parse_mode="HTML",
                 link_preview_options=reply.link_preview_options,
             )
