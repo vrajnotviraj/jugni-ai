@@ -7,14 +7,15 @@ from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
 from presenters.photo_reply import (
-    PHOTO_REPLY_PARSE_MODE,
     format_photo_reply,
+    format_photo_reply_rich,
     format_streak_line,
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import IntakeCommand
+from workflows.loading_reply import Reply, finish_loading, start_loading, update_loading
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
@@ -86,13 +87,13 @@ async def handle_intake(
         # Best-effort, like the placeholder/streak guards: a cleanup failure must
         # never skip the user's reply below (which _deliver sends right after).
         try:
-            await repo.delete_meal(
-                chat_id=photo.chat_id, message_id=photo.message_id
-            )
+            await repo.delete_meal(chat_id=photo.chat_id, message_id=photo.message_id)
         except Exception:
             logger.exception("intake discard failed msg=%s", photo.message_id)
 
-    placeholder_id = await _send_placeholder(telegram, command)
+    placeholder_id = await start_loading(
+        telegram, command.chat_id, command.message_id, LOGGING_REPLY
+    )
 
     eaten_at = command.sent_at.astimezone(user_zone).strftime("%H:%M")
     eaten_at_label = eaten_at if profile and profile.timezone else None
@@ -121,6 +122,13 @@ async def handle_intake(
         # (their reservation is discarded below). The tip is added later via set_tip.
         if _is_loggable(extraction):
             await repo.complete(photo, extraction)
+            await update_loading(
+                telegram,
+                command.chat_id,
+                placeholder_id,
+                f"✅ {extraction.dish} · {extraction.calories} kcal\n"
+                "✍️ Writing your tip…",
+            )
 
     try:
         analysis = await intake_analyzer(
@@ -175,16 +183,17 @@ async def handle_intake(
     # Reinforce the streak only on the first meal of the local day; `prior` was
     # read before this meal was stored, so empty means this is the first.
     streak_line = await _streak_line(repo, photo, day_key) if not prior else None
-    reply = format_photo_reply(
-        command.sender_label,
-        analysis,
-        daily_total,
+    card = dict(
+        sender_label=command.sender_label,
+        analysis=analysis,
+        daily_total=daily_total,
         streak_line=streak_line,
         eaten_at=eaten_at_label,
         calorie_target=target,
         protein_today_g=protein_so_far + max(0, analysis.protein_g),
         protein_target_g=protein_target,
     )
+    reply = Reply(format_photo_reply(**card), format_photo_reply_rich(**card))
     await _deliver(telegram, command, reply, placeholder_id)
     return analysis
 
@@ -231,58 +240,14 @@ async def _streak_line(
         return None
 
 
-async def _send_placeholder(
-    telegram: TelegramBotApi, command: IntakeCommand
-) -> int | None:
-    try:
-        return await telegram.send_message(
-            chat_id=command.chat_id,
-            text=LOGGING_REPLY,
-            reply_to_message_id=command.message_id,
-        )
-    except Exception:
-        logger.exception(
-            "intake placeholder send failed chat=%s msg=%s",
-            command.chat_id,
-            command.message_id,
-        )
-        return None
-
-
 async def _deliver(
     telegram: TelegramBotApi,
     command: IntakeCommand,
-    text: str,
+    reply: Reply | str,
     placeholder_id: int | None,
 ) -> None:
-    """Show the result: edit the placeholder in place, or send fresh when there
-    was no placeholder (usage reply) or the edit fails."""
-    if placeholder_id is not None:
-        try:
-            await telegram.edit_message_text(
-                chat_id=command.chat_id,
-                message_id=placeholder_id,
-                text=text,
-                parse_mode=PHOTO_REPLY_PARSE_MODE,
-            )
-            return
-        except Exception:
-            logger.exception(
-                "intake placeholder edit failed chat=%s msg=%s — sending fresh",
-                command.chat_id,
-                command.message_id,
-            )
-
-    try:
-        await telegram.send_message(
-            chat_id=command.chat_id,
-            text=text,
-            reply_to_message_id=command.message_id,
-            parse_mode=PHOTO_REPLY_PARSE_MODE,
-        )
-    except Exception:
-        logger.exception(
-            "intake reply failed chat=%s msg=%s",
-            command.chat_id,
-            command.message_id,
-        )
+    if isinstance(reply, str):
+        reply = Reply(reply)
+    await finish_loading(
+        telegram, command.chat_id, command.message_id, placeholder_id, reply
+    )

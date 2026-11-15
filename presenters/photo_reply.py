@@ -78,6 +78,94 @@ def format_photo_reply(
     return "\n\n".join("\n".join(group) for group in groups)
 
 
+def format_photo_reply_rich(
+    sender_label: str,
+    analysis: FoodAnalysis,
+    daily_total: int,
+    streak_line: str | None = None,
+    eaten_at: str | None = None,
+    calorie_target: int | None = None,
+    protein_today_g: int | None = None,
+    protein_target_g: int | None = None,
+) -> str | None:
+    """The same card as :func:`format_photo_reply`, as Bot API 10.1 rich HTML:
+    a heading, a macro table, progress bars, and a collapsible breakdown.
+    None for non-food (the plain one-liner is sent instead)."""
+    if not analysis.is_food:
+        return None
+
+    def esc(text: str) -> str:
+        return escape(text, quote=False)
+
+    meta = [f"<b>{esc(analysis.dish)}</b>"]
+    if eaten_at:
+        meta.append(f"🕐 {esc(eaten_at)}")
+    meta.append(f"{_confidence_line(analysis.confidence)}")
+    parts = [
+        f"<h3>{_dish_icon(analysis.dish)} {esc(sender_label)}'s meal</h3>",
+        f"<p>{' · '.join(meta)}</p>",
+        _macro_table(analysis),
+    ]
+
+    progress = [
+        f"{_day_progress_icon(daily_total, calorie_target)} <b>Today</b> "
+        f"{daily_total} kcal{_bar(daily_total, calorie_target)}"
+    ]
+    gauge = protein_progress(protein_today_g or 0, protein_target_g)
+    if gauge:
+        progress.append(
+            f"{gauge[0]} <b>Protein</b> {protein_today_g}g"
+            f"{_bar(protein_today_g or 0, protein_target_g)}"
+        )
+    parts.append(f"<p>{'<br>'.join(progress)}</p>")
+
+    items = [item for item in analysis.items if item.strip()]
+    if items:
+        rows = "".join(f"<li>{esc(item)}</li>" for item in items)
+        parts.append(
+            f"<details><summary>What's in it</summary><ul>{rows}</ul></details>"
+        )
+    tip = (analysis.tip or "").strip()
+    if tip:
+        parts.append(f"<blockquote>💡 <b>Tip</b><br>{esc(tip)}</blockquote>")
+    if streak_line:
+        parts.append(f"<p>{esc(streak_line)}</p>")
+    return "".join(parts)
+
+
+def _macro_table(analysis: FoodAnalysis) -> str:
+    """Calories plus each macro's grams and share of calories, one column each."""
+    shares = {
+        label: pct
+        for label, _, pct in macro_shares(
+            analysis.protein_g, analysis.carb_g, analysis.fat_g
+        )
+        or []
+    }
+    head = [f"{_calorie_icon(analysis.calories)} kcal"]
+    body = [str(analysis.calories)]
+    for label, icon, grams in (
+        ("Protein", "💪", analysis.protein_g),
+        ("Carbs", "🍚", analysis.carb_g),
+        ("Fat", "🧈", analysis.fat_g),
+    ):
+        head.append(f"{icon} {label}")
+        pct = f" · {shares[label]}%" if label in shares else ""
+        body.append(f"{grams}g{pct}")
+    th = "".join(f'<th align="center">{h}</th>' for h in head)
+    td = "".join(f'<td align="center">{b}</td>' for b in body)
+    return f"<table bordered striped><tr>{th}</tr><tr>{td}</tr></table>"
+
+
+def _bar(value: int, target: int | None, width: int = 10) -> str:
+    """`` ▰▰▰▱▱ 62%`` against a target, or empty when there is no target."""
+    if not target or target <= 0:
+        return ""
+    fraction = value / target
+    filled = min(width, round(fraction * width))
+    return f"  {'▰' * filled}{'▱' * (width - filled)} {round(fraction * 100)}%"
+
+
 def _tip_block(tip: str) -> str | None:
     tip = (tip or "").strip()
     if not tip:

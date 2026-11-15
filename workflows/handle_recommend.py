@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 from analyzers.recommend.recommender import Recommender
 from domain.recommendation import MEAL_SLOTS
 from presenters.recommend_reply import (
-    RECOMMEND_REPLY_PARSE_MODE,
     format_recommendation,
     recommend_link_preview,
 )
@@ -22,6 +21,7 @@ from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
 from telegram.updates import RecommendCommand
 from workflows.build_recommendation_context import build_recommendation_context
+from workflows.loading_reply import Reply, finish_loading, start_loading
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,11 @@ async def handle_recommend_command(
     # Replying to the command threads the conversation in groups.
     reply_to = command.message_id if is_group else None
 
-    # Acknowledge immediately, then edit this same message into the finished
-    # card once the suggestion (and its recipe videos) return — so the chat
-    # shows progress instead of silence during the LLM and YouTube calls.
-    placeholder_id = await _send_placeholder(telegram, command.chat_id, reply_to)
+    # Acknowledge immediately with a loading GIF, replaced by the finished card
+    # once the suggestion (and its recipe videos) return.
+    placeholder_id = await start_loading(
+        telegram, command.chat_id, reply_to, GENERATING_REPLY
+    )
 
     slot = parse_slot(command.text)
     # Meal history lives in the group chat: the command's own chat on the
@@ -68,16 +69,15 @@ async def handle_recommend_command(
         timezone=timezone,
     )
     result = await recommender(context)
-    await _deliver(
-        telegram,
-        command.chat_id,
+    # Classic HTML on purpose: rich messages carry no link preview, and the
+    # first recipe's video preview is part of this card.
+    reply = Reply(
         format_recommendation(
             result, for_label=command.sender_label if is_group else ""
         ),
         link_preview_options=recommend_link_preview(result),
-        placeholder_id=placeholder_id,
-        reply_to_message_id=reply_to,
     )
+    await finish_loading(telegram, command.chat_id, reply_to, placeholder_id, reply)
 
 
 def parse_slot(text: str) -> str | None:
@@ -87,60 +87,3 @@ def parse_slot(text: str) -> str | None:
     as an explicit lunch ask."""
     lowered = text.casefold()
     return next((s for s in MEAL_SLOTS if re.search(rf"\b{s}s?\b", lowered)), None)
-
-
-async def _send_placeholder(
-    telegram: TelegramBotApi,
-    chat_id: int,
-    reply_to_message_id: int | None,
-) -> int | None:
-    # Best-effort: if the ack fails we just fall back to sending the card fresh.
-    try:
-        return await telegram.send_message(
-            chat_id=chat_id,
-            text=GENERATING_REPLY,
-            reply_to_message_id=reply_to_message_id,
-        )
-    except Exception:
-        logger.exception("recommend placeholder send failed chat=%s", chat_id)
-        return None
-
-
-async def _deliver(
-    telegram: TelegramBotApi,
-    chat_id: int,
-    text: str,
-    *,
-    link_preview_options: dict,
-    placeholder_id: int | None,
-    reply_to_message_id: int | None = None,
-) -> None:
-    """Show the finished card: edit the placeholder in place, or send fresh when
-    there was no placeholder or the edit fails."""
-    if placeholder_id is not None:
-        try:
-            await telegram.edit_message_text(
-                chat_id=chat_id,
-                message_id=placeholder_id,
-                text=text,
-                parse_mode=RECOMMEND_REPLY_PARSE_MODE,
-                link_preview_options=link_preview_options,
-            )
-            return
-        except Exception:
-            # Stale or deleted placeholder; fall back to a fresh card so the
-            # reply is never silently dropped.
-            logger.exception(
-                "recommend placeholder edit failed chat=%s — sending fresh", chat_id
-            )
-
-    try:
-        await telegram.send_message(
-            chat_id=chat_id,
-            text=text,
-            reply_to_message_id=reply_to_message_id,
-            parse_mode=RECOMMEND_REPLY_PARSE_MODE,
-            link_preview_options=link_preview_options,
-        )
-    except Exception:
-        logger.exception("recommend reply failed chat=%s", chat_id)

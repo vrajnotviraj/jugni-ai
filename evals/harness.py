@@ -94,6 +94,17 @@ class _Telegram:
     async def delete_message(self, *_: object, **__: object) -> None:
         pass
 
+    async def send_animation(self, *_: object, **__: object) -> int:
+        # The loading GIF; deleted once the reply lands, so it isn't recorded.
+        self._next_id += 1
+        return self._next_id
+
+    async def edit_message_caption(self, *_: object, **__: object) -> None:
+        pass
+
+    async def send_rich_message(self, chat_id: int, html: str, *_: object) -> int:
+        return await self.send_message(chat_id, html)
+
     async def send_document(self, *_: object, **__: object) -> None:
         pass
 

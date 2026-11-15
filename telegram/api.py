@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,6 +24,7 @@ class TelegramBotApi:
         self._base_url = f"https://api.telegram.org/bot{bot_token}"
         self._file_base_url = f"https://api.telegram.org/file/bot{bot_token}"
         self._dry_run = dry_run
+        self._file_ids: dict[Path, str] = {}
 
     async def get_updates(
         self,
@@ -145,6 +148,81 @@ class TelegramBotApi:
             payload["link_preview_options"] = link_preview_options
 
         await self._call("editMessageText", payload)
+
+    async def send_rich_message(
+        self, chat_id: int, html: str, reply_to_message_id: int | None = None
+    ) -> int | None:
+        """Send a Bot API 10.1 rich message (headings, tables, details) and
+        return its ``message_id`` (None in dry-run)."""
+        if self._dry_run:
+            print(f"\n[DRY-RUN telegram] sendRichMessage chat_id={chat_id}\n{html}\n")
+            return None
+        payload: dict[str, object] = {
+            "chat_id": chat_id,
+            "rich_message": {"html": html},
+        }
+        if reply_to_message_id is not None and reply_to_message_id > 0:
+            payload["reply_parameters"] = {
+                "message_id": reply_to_message_id,
+                "allow_sending_without_reply": True,
+            }
+        body = await self._call("sendRichMessage", payload)
+        return body.get("result", {}).get("message_id")
+
+    async def send_animation(
+        self,
+        chat_id: int,
+        path: Path,
+        caption: str,
+        reply_to_message_id: int | None = None,
+    ) -> int | None:
+        """Send a GIF from ``path`` and return its ``message_id``. The first send
+        uploads the file; later sends reuse Telegram's ``file_id``."""
+        if self._dry_run:
+            print(f"\n[DRY-RUN telegram] sendAnimation chat_id={chat_id} {caption}\n")
+            return None
+        data: dict[str, str] = {"chat_id": str(chat_id), "caption": caption}
+        if reply_to_message_id is not None and reply_to_message_id > 0:
+            data["reply_parameters"] = json.dumps(
+                {"message_id": reply_to_message_id, "allow_sending_without_reply": True}
+            )
+        # shortcut: file_id cache is per process, so each cold start re-uploads
+        # the ~200 KB GIF once; persist it in Redis if cold starts get frequent.
+        file_id = self._file_ids.get(path)
+        files = None
+        if file_id:
+            data["animation"] = file_id
+        else:
+            files = {"animation": (path.name, path.read_bytes(), "image/gif")}
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self._base_url}/sendAnimation", data=data, files=files
+            )
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"raw": response.text}
+        if response.status_code >= 400 or not body.get("ok", False):
+            description = body.get("description") or response.text
+            raise TelegramApiError(
+                f"Telegram sendAnimation failed ({response.status_code}): {description}"
+            )
+        result = body.get("result", {})
+        sent = result.get("animation") or result.get("document") or {}
+        if sent.get("file_id"):
+            self._file_ids[path] = sent["file_id"]
+        return result.get("message_id")
+
+    async def edit_message_caption(
+        self, chat_id: int, message_id: int, caption: str
+    ) -> None:
+        if self._dry_run:
+            print(f"\n[DRY-RUN telegram] editMessageCaption {message_id}: {caption}\n")
+            return
+        await self._call(
+            "editMessageCaption",
+            {"chat_id": chat_id, "message_id": message_id, "caption": caption},
+        )
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         """Remove a message the bot sent — e.g. clear an orphaned placeholder."""

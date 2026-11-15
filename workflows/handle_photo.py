@@ -8,13 +8,14 @@ from domain.analysis import FoodAnalysis
 from domain.calorie_target import calorie_target, goal_summary, protein_target_g
 from domain.photo import Photo, PhotoStatus, PhotoStillProcessing, StoredPhoto
 from presenters.photo_reply import (
-    PHOTO_REPLY_PARSE_MODE,
     format_photo_reply,
+    format_photo_reply_rich,
     format_streak_line,
 )
 from storage.photo_repository import PhotoRepository
 from storage.profile_repository import ProfileRepository
 from telegram.api import TelegramBotApi
+from workflows.loading_reply import Reply, finish_loading, start_loading, update_loading
 from workflows.personalization import dietary_facts
 from workflows.streak import user_streak
 
@@ -102,10 +103,11 @@ async def handle_photo(
             logger.info("photo already stored, skipping msg=%s", photo.message_id)
             return None
 
-    # Acknowledge the photo immediately, then edit this same message into the
-    # finished card once analysis returns — so the chat shows progress instead
-    # of silence during the vision call.
-    placeholder_id = await _send_placeholder(telegram, photo)
+    # Acknowledge the photo immediately with a loading GIF whose caption tracks
+    # progress, so the chat shows activity instead of silence during the calls.
+    placeholder_id = await start_loading(
+        telegram, photo.chat_id, photo.message_id, ANALYSING_REPLY
+    )
 
     eaten_at = photo.sent_at.astimezone(user_zone).strftime("%H:%M")
     # The eaten-at time is only meaningful (and only shown to the user) when they
@@ -150,6 +152,14 @@ async def handle_photo(
         # lands, so a repeat delivery sees a finished meal while the tip pass is
         # still running. The tip is added afterwards via set_tip.
         await repo.complete(photo, extraction)
+        if extraction.is_food:
+            await update_loading(
+                telegram,
+                photo.chat_id,
+                placeholder_id,
+                f"✅ {extraction.dish} · {extraction.calories} kcal\n"
+                "✍️ Writing your tip…",
+            )
 
     try:
         # The download runs under this guard too: a failure here must mark the
@@ -182,7 +192,13 @@ async def handle_photo(
             await repo.mark_failed(photo, str(error))
         except Exception:
             logger.exception("mark_failed failed msg=%s", photo.message_id)
-        await _deliver(telegram, photo, ANALYSIS_FAILED_REPLY, placeholder_id)
+        await finish_loading(
+            telegram,
+            photo.chat_id,
+            photo.message_id,
+            placeholder_id,
+            Reply(ANALYSIS_FAILED_REPLY),
+        )
         return None
 
     logger.info(
@@ -242,17 +258,20 @@ async def _reply_with_analysis(
             sender_label=photo.sender_label,
         )
         protein_today_g = sum(stored.protein_g for stored in photos)
-    reply = format_photo_reply(
-        photo.sender_label,
-        analysis,
-        daily_total,
+    card = dict(
+        sender_label=photo.sender_label,
+        analysis=analysis,
+        daily_total=daily_total,
         streak_line=streak_line,
         eaten_at=eaten_at,
         calorie_target=target,
         protein_today_g=protein_today_g,
         protein_target_g=protein_target_g,
     )
-    await _deliver(telegram, photo, reply, placeholder_id)
+    reply = Reply(format_photo_reply(**card), format_photo_reply_rich(**card))
+    await finish_loading(
+        telegram, photo.chat_id, photo.message_id, placeholder_id, reply
+    )
 
 
 async def _streak_line(
@@ -316,71 +335,3 @@ async def _ensure_image_bytes(
 
 def _content_hash(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()
-
-
-async def _send_placeholder(telegram: TelegramBotApi, photo: Photo) -> int | None:
-    # Best-effort: if the ack fails we just fall back to sending the card fresh.
-    try:
-        return await telegram.send_message(
-            chat_id=photo.chat_id,
-            text=ANALYSING_REPLY,
-            reply_to_message_id=photo.message_id,
-        )
-    except Exception:
-        logger.exception(
-            "placeholder send failed chat=%s msg=%s", photo.chat_id, photo.message_id
-        )
-        return None
-
-
-async def _deliver(
-    telegram: TelegramBotApi,
-    photo: Photo,
-    text: str,
-    placeholder_id: int | None,
-) -> None:
-    """Show the finished card: edit the placeholder in place, or send fresh when
-    there was no placeholder or the edit fails."""
-    if placeholder_id is not None:
-        try:
-            await telegram.edit_message_text(
-                chat_id=photo.chat_id,
-                message_id=placeholder_id,
-                text=text,
-                parse_mode=PHOTO_REPLY_PARSE_MODE,
-            )
-            logger.info(
-                "replied chat=%s msg=%s sender=%s edited=true",
-                photo.chat_id,
-                photo.message_id,
-                photo.sender_label,
-            )
-            return
-        except Exception:
-            # The placeholder edit failed (deleted message, stale id); fall back
-            # to a fresh card so the reply is never silently dropped.
-            logger.exception(
-                "placeholder edit failed chat=%s msg=%s — sending fresh card",
-                photo.chat_id,
-                photo.message_id,
-            )
-
-    try:
-        await telegram.send_message(
-            chat_id=photo.chat_id,
-            text=text,
-            reply_to_message_id=photo.message_id,
-            parse_mode=PHOTO_REPLY_PARSE_MODE,
-        )
-        logger.info(
-            "replied chat=%s msg=%s sender=%s edited=false",
-            photo.chat_id,
-            photo.message_id,
-            photo.sender_label,
-        )
-    except Exception:
-        logger.exception(
-            "telegram reply failed chat=%s msg=%s — analysis stored",
-            photo.chat_id,
-            photo.message_id,
-        )
