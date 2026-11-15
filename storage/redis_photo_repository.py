@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from redis.asyncio import Redis
@@ -188,6 +188,20 @@ class RedisPhotoRepository:
             for day_key, present in zip(day_keys, results, strict=True)
             if present
         }
+
+    async def bump_nudge_run(
+        self, *, chat_id: int, sender_label: str, day_key: str
+    ) -> int:
+        key = f"chat:{chat_id}:user:{sender_label}:nudge"
+        last_day, run = await self._redis.hmget(key, "last_day", "run")
+        run = int(run or 0)
+        if last_day != day_key:
+            yesterday = (date.fromisoformat(day_key) - timedelta(days=1)).isoformat()
+            run = run + 1 if last_day == yesterday else 1
+            # Expires on its own once the run has lapsed for a while.
+            await self._redis.hset(key, mapping={"last_day": day_key, "run": run})
+            await self._redis.expire(key, 7 * 24 * 3600)
+        return run
 
     async def daily_user_calories(
         self,

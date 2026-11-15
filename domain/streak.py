@@ -25,6 +25,8 @@ class AtRiskUser:
 
     sender_label: str
     streak: int
+    # True on the last reminder of a run, so the message can say it stops.
+    last_reminder: bool = False
 
 
 def compute_streak(active_days: set[str], as_of: str) -> StreakState:

@@ -9,6 +9,9 @@ from workflows.streak import user_streak
 # Only streaks at least this long are worth an evening nudge — trivial 1-2 day
 # runs don't earn a push (protects the notification-fatigue budget, KTD5).
 MIN_NUDGE_STREAK = 3
+# At most this many reminders in a row per person; the last one says so, then
+# they hear nothing until an evening passes where no reminder was needed.
+MAX_NUDGES_IN_A_ROW = 3
 
 
 async def build_streak_nudge(
@@ -40,8 +43,19 @@ async def build_streak_nudge(
             sender_label=sender_label,
             as_of_day_key=today,
         )
-        if state.alive and state.length >= MIN_NUDGE_STREAK:
-            at_risk.append(AtRiskUser(sender_label, state.length))
+        if not (state.alive and state.length >= MIN_NUDGE_STREAK):
+            continue
+        run = await repo.bump_nudge_run(
+            chat_id=chat_id, sender_label=sender_label, day_key=today
+        )
+        if run <= MAX_NUDGES_IN_A_ROW:
+            at_risk.append(
+                AtRiskUser(
+                    sender_label,
+                    state.length,
+                    last_reminder=run == MAX_NUDGES_IN_A_ROW,
+                )
+            )
 
     at_risk.sort(key=lambda user: (-user.streak, user.sender_label))
     return at_risk

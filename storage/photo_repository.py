@@ -94,6 +94,13 @@ class PhotoRepository(Protocol):
         streaks across many days for many users.
         """
 
+    async def bump_nudge_run(
+        self, *, chat_id: int, sender_label: str, day_key: str
+    ) -> int:
+        """Record that ``sender_label`` was due a streak reminder on ``day_key``
+        and return how many days in a row that has now happened. A gap of a day
+        resets the run to 1; repeating the same day is idempotent."""
+
     async def daily_user_calories(
         self,
         *,
