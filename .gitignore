@@ -64,3 +64,22 @@ Thumbs.db
 # Eval food photos (drop your own real photos here; never committed)
 evals/photos/*
 !evals/photos/README.md
+
+# AI coding assistants: agent skills, local settings and caches (never committed)
+.agents/
+.claude/
+skills-lock.json
+CLAUDE.local.md
+.cursor/
+.cursorignore
+.windsurf/
+.codeium/
+.continue/
+.aider*
+.codex/
+.gemini/
+.roo/
+.kiro/
+.cline/
+.clinerules
+.taste-skill/
