@@ -1,8 +1,20 @@
 import asyncio
+import json
+import zlib
 
 from domain.analysis import FoodAnalysis
-from presenters.photo_reply import format_photo_reply_rich
-from workflows.loading_reply import Reply, finish_loading
+from presenters.photo_reply import (
+    MEAL_WIDGET,
+    format_photo_reply_rich,
+    format_photo_widget_data,
+)
+from workflows.loading_reply import (
+    LOADING_WIDGET,
+    Reply,
+    finish_loading,
+    start_loading,
+    update_loading,
+)
 
 
 class FakeTelegram:
@@ -96,3 +108,87 @@ def test_finish_falls_back_to_classic_when_rich_fails():
     tg = FakeTelegram(rich_fails=True)
     asyncio.run(finish_loading(tg, 1, 10, 99, Reply("plain", "<h3>x</h3>")))
     assert tg.calls == [("text", "plain"), ("delete", 99)]
+
+
+# --- Bot API 10.4 widgets ---------------------------------------------------
+
+
+class WidgetTelegram(FakeTelegram):
+    def __init__(self, widget_fails: bool = False) -> None:
+        super().__init__()
+        self.widget_fails = widget_fails
+
+    async def send_widget(self, chat_id, html, chat_data=None, reply_to=None):
+        if self.widget_fails:
+            raise RuntimeError("Bad Request: widgets are not allowed")
+        self.calls.append(("widget", chat_data))
+        return 7
+
+    async def edit_message_widget_data(self, chat_id, message_id, chat_data):
+        self.calls.append(("widget_edit", json.loads(chat_data)))
+
+    async def send_animation(self, chat_id, path, caption, reply_to=None):
+        self.calls.append(("gif", caption))
+        return 8
+
+    async def edit_message_caption(self, chat_id, message_id, caption):
+        self.calls.append(("caption", caption))
+
+
+CARD = Reply("plain", "<h3>x</h3>", widget=(MEAL_WIDGET, '{"dish":"x"}'))
+
+
+def test_widgets_fit_bot_api_size_limit():
+    for html in (LOADING_WIDGET, MEAL_WIDGET):
+        assert len(zlib.compress(html.encode(), 9)) <= 4096
+
+
+def test_private_chat_gets_widget_card():
+    tg = WidgetTelegram()
+    asyncio.run(finish_loading(tg, 1, 10, 99, CARD))
+    assert tg.calls == [("widget", '{"dish":"x"}'), ("delete", 99)]
+
+
+def test_group_chat_skips_widget():
+    tg = WidgetTelegram()
+    asyncio.run(finish_loading(tg, -100, 10, 99, CARD))
+    assert tg.calls == [("rich", "<h3>x</h3>"), ("delete", 99)]
+
+
+def test_widget_failure_falls_back_to_rich():
+    tg = WidgetTelegram(widget_fails=True)
+    asyncio.run(finish_loading(tg, 1, 10, 99, CARD))
+    assert tg.calls == [("rich", "<h3>x</h3>"), ("delete", 99)]
+
+
+def test_loader_is_widget_in_dm_gif_in_group():
+    tg = WidgetTelegram()
+    assert asyncio.run(start_loading(tg, 1, 10, "🔍 Analysing…")) == 7
+    assert asyncio.run(start_loading(tg, -100, 10, "🔍 Analysing…")) == 8
+    asyncio.run(update_loading(tg, 1, 7, MEAL))
+    asyncio.run(update_loading(tg, -100, 8, MEAL))
+    assert tg.calls[2] == (
+        "widget_edit",
+        {"label": "Writing your tip", "dish": MEAL.dish, "kcal": 620},
+    )
+    assert tg.calls[3][0] == "caption"
+
+
+def test_widget_data_trims_to_1024_bytes():
+    long = FoodAnalysis(
+        dish="Thali",
+        calories=900,
+        confidence="high",
+        tip="Eat more greens. " * 60,
+        is_food=True,
+        protein_g=30,
+        carb_g=120,
+        fat_g=30,
+        items=tuple(f"item number {i} ~100 kcal" for i in range(40)),
+    )
+    data = format_photo_widget_data("Vraj", long, 1500, calorie_target=2000)
+    assert len(data.encode()) <= 1024
+    parsed = json.loads(data)
+    assert parsed["dish"] == "Thali" and parsed["goal"] == 2000
+    assert "items" not in parsed or len(parsed["items"]) < 40
+    assert format_photo_widget_data("Vraj", MEAL, 0) is not None

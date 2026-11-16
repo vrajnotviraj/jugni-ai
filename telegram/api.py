@@ -167,6 +167,41 @@ class TelegramBotApi:
         body = await self._call("sendRichMessage", payload)
         return body.get("result", {}).get("message_id")
 
+    async def send_widget(
+        self,
+        chat_id: int,
+        html: str,
+        chat_data: str | None = None,
+        reply_to_message_id: int | None = None,
+    ) -> int | None:
+        """Bot API 10.4 HTML widget. Production only allows private chats."""
+        if self._dry_run:
+            print(f"\n[DRY-RUN telegram] sendWidget chat_id={chat_id}\n{chat_data}\n")
+            return None
+        payload: dict[str, object] = {"chat_id": chat_id, "html": html}
+        if chat_data is not None:
+            payload["chat_data"] = chat_data
+        if reply_to_message_id is not None and reply_to_message_id > 0:
+            payload["reply_parameters"] = {
+                "message_id": reply_to_message_id,
+                "allow_sending_without_reply": True,
+            }
+        body = await self._call("sendWidget", payload)
+        return body.get("result", {}).get("message_id")
+
+    async def edit_message_widget_data(
+        self, chat_id: int, message_id: int, chat_data: str
+    ) -> None:
+        if self._dry_run:
+            print(
+                f"\n[DRY-RUN telegram] editWidgetData {message_id}\n{chat_data}\n"
+            )
+            return
+        await self._call(
+            "editMessageWidgetData",
+            {"chat_id": chat_id, "message_id": message_id, "chat_data": chat_data},
+        )
+
     async def send_animation(
         self,
         chat_id: int,

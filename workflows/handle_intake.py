@@ -14,7 +14,6 @@ from telegram.updates import IntakeCommand
 from workflows.loading_reply import (
     Reply,
     finish_loading,
-    progress_caption,
     start_loading,
     update_loading,
 )
@@ -130,7 +129,7 @@ async def handle_intake(
                 telegram,
                 command.chat_id,
                 placeholder_id,
-                progress_caption(extraction),
+                extraction,
             )
 
     try:
@@ -204,7 +203,7 @@ async def handle_intake(
     # Reinforce the streak only on the first meal of the local day; `prior` was
     # read before this meal was stored, so empty means this is the first.
     streak_line = await _streak_line(repo, photo, day_key) if not prior else None
-    classic, rich = format_photo_replies(
+    classic, rich, widget = format_photo_replies(
         command.sender_label,
         analysis,
         daily_total,
@@ -219,7 +218,7 @@ async def handle_intake(
         command.chat_id,
         command.message_id,
         placeholder_id,
-        Reply(classic, rich),
+        Reply(classic, rich, widget=widget),
     )
     return analysis
 

@@ -1,6 +1,8 @@
+import json
 import logging
 import random
 from html import escape
+from pathlib import Path
 
 from domain.analysis import FoodAnalysis
 from domain.streak import StreakState
@@ -11,6 +13,12 @@ logger = logging.getLogger(__name__)
 NOT_FOOD_REPLY = "Doesn't look like food. Send a food photo to get a calorie estimate."
 
 _CONFIDENCE_ICONS = {"medium": "⚖️", "low": "❓"}
+
+MEAL_WIDGET = (
+    Path(__file__).resolve().parent.parent / "assets" / "widgets" / "meal.html"
+).read_text()
+# Bot API 10.4 caps a widget's chat_data at 1024 bytes.
+_WIDGET_DATA_LIMIT = 1024
 
 
 def format_photo_reply(
@@ -86,8 +94,9 @@ def format_photo_replies(
     calorie_target: int | None,
     protein_today_g: int | None,
     protein_target_g: int | None,
-) -> tuple[str, str | None]:
-    """(classic HTML card, rich HTML card or None) for the same meal."""
+) -> tuple[str, str | None, tuple[str, str] | None]:
+    """(classic HTML card, rich HTML card or None, (widget html, chat_data) or
+    None) for the same meal."""
     args = (sender_label, analysis, daily_total)
     kwargs = dict(
         streak_line=streak_line,
@@ -96,7 +105,62 @@ def format_photo_replies(
         protein_today_g=protein_today_g,
         protein_target_g=protein_target_g,
     )
-    return format_photo_reply(*args, **kwargs), format_photo_reply_rich(*args, **kwargs)
+    data = format_photo_widget_data(*args, **kwargs)
+    return (
+        format_photo_reply(*args, **kwargs),
+        format_photo_reply_rich(*args, **kwargs),
+        (MEAL_WIDGET, data) if data is not None else None,
+    )
+
+
+def format_photo_widget_data(
+    sender_label: str,
+    analysis: FoodAnalysis,
+    daily_total: int,
+    streak_line: str | None = None,
+    eaten_at: str | None = None,
+    calorie_target: int | None = None,
+    protein_today_g: int | None = None,
+    protein_target_g: int | None = None,
+) -> str | None:
+    """The meal card's state as compact JSON for ``assets/widgets/meal.html``.
+    The widget renders it with textContent, so nothing here needs escaping.
+    Items, then the tip, are trimmed until it fits the 1024-byte cap."""
+    if not analysis.is_food:
+        return None
+    data = {
+        "who": sender_label,
+        "at": eaten_at,
+        "conf": analysis.confidence,
+        "dish": analysis.dish,
+        "kcal": analysis.calories,
+        "p": analysis.protein_g,
+        "c": analysis.carb_g,
+        "f": analysis.fat_g,
+        "day": daily_total,
+        "goal": calorie_target,
+        "pd": protein_today_g,
+        "pg": protein_target_g,
+        "items": [item for item in analysis.items if item.strip()],
+        "tip": (analysis.tip or "").strip(),
+        "streak": streak_line,
+    }
+
+    def encode() -> str:
+        compact = {k: v for k, v in data.items() if v not in (None, "", [])}
+        return json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+
+    payload = encode()
+    while len(payload.encode()) > _WIDGET_DATA_LIMIT and data["items"]:
+        data["items"].pop()
+        payload = encode()
+    while len(payload.encode()) > _WIDGET_DATA_LIMIT and data["tip"]:
+        data["tip"] = data["tip"][: max(0, len(data["tip"]) - 40)].rstrip() + "…"
+        if len(data["tip"]) <= 1:
+            data["tip"] = ""
+        payload = encode()
+    # Dish, names and streak are short; if they still overflow, skip the widget.
+    return payload if len(payload.encode()) <= _WIDGET_DATA_LIMIT else None
 
 
 def format_photo_reply_rich(

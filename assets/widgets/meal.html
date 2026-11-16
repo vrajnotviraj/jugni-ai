@@ -1,0 +1,145 @@
+<style>
+:root{--ink:var(--tg-theme-text-color);--hint:var(--tg-theme-hint-color);--acc:var(--tg-theme-button-color);--track:var(--tg-theme-secondary-bg-color);--line:var(--tg-theme-section-separator-color);--warn:var(--tg-theme-destructive-text-color);--p:var(--tg-theme-button-color);--c:#e9a23b;--f:#3fb0a0;--out:cubic-bezier(.23,1,.32,1)}
+body{font-family:system-ui,sans-serif;color:var(--ink);font-variant-numeric:tabular-nums}
+.meta{font-size:13px;color:var(--hint)}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:2px}
+h1{font-size:17px;line-height:1.25;font-weight:600;letter-spacing:-.015em;margin:0}
+.kc{flex:none;text-align:right}
+.kc b{display:block;font-size:30px;line-height:1;font-weight:700;letter-spacing:-.03em}
+.kc span{font-size:12px;color:var(--hint)}
+.stack{display:flex;gap:2px;height:8px;margin-top:14px;border-radius:4px;overflow:hidden;transform-origin:left}
+.stack i{display:block;min-width:4px}
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.legend div{font-size:12px;color:var(--hint)}
+.legend b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+.legend i{display:inline-block;width:6px;height:6px;border-radius:3px;margin-right:5px;vertical-align:1px}
+.prog{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.pr+.pr{margin-top:10px}
+.pr p{display:flex;justify-content:space-between;margin:0;font-size:13px}
+.pr p span{color:var(--hint)}
+.track{height:4px;border-radius:2px;background:var(--track);margin-top:6px;overflow:hidden}
+.fill{height:100%;border-radius:2px;background:var(--acc);transform-origin:left;transform:scaleX(0);transition:transform 700ms var(--out)}
+.fill.over{background:var(--warn)}
+details{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
+summary{color:var(--tg-theme-link-color);cursor:pointer}
+ul{margin:6px 0 0;padding-left:18px}
+li{margin-top:2px}
+.tip{margin:14px 0 0;padding-left:10px;border-left:2px solid var(--acc);font-size:14px}
+.tip b{display:block;font-size:12px;font-weight:600;color:var(--hint)}
+.foot{margin:12px 0 0;font-size:13px;color:var(--hint)}
+.in{animation:in 360ms var(--out) both}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+@keyframes grow{from{transform:scaleX(.02)}}
+@media (prefers-reduced-motion:reduce){
+.in{animation-name:fade}
+.fill{transition:none}
+.stack{animation:none!important}
+}
+@keyframes fade{from{opacity:0}}
+</style>
+<div id="card"></div>
+<script>
+const W = window.TelegramWidget;
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const n = (v) => Number(v || 0).toLocaleString();
+let drawn = false;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function bar(label, value, unit, goal) {
+  const row = el('div', 'pr');
+  const p = el('p');
+  p.append(el('b', '', label));
+  const pct = Math.round((value / goal) * 100);
+  p.append(el('span', '', `${n(value)} / ${n(goal)} ${unit} · ${pct}%`));
+  const fill = el('div', value > goal && unit === 'kcal' ? 'fill over' : 'fill');
+  fill.dataset.to = Math.min(1, value / goal);
+  const track = el('div', 'track');
+  track.append(fill);
+  row.append(p, track);
+  return row;
+}
+
+function render() {
+  let d;
+  try { d = JSON.parse(W.chatData || 'null'); } catch (e) { d = null; }
+  if (!d) return;
+  const card = document.getElementById('card');
+  card.textContent = '';
+  const parts = [];
+
+  const meta = [d.who, d.at, d.conf && d.conf !== 'high' ? `${d.conf} confidence` : ''].filter(Boolean);
+  parts.push(el('div', 'meta', meta.join(' · ')));
+
+  const head = el('div', 'head');
+  const kc = el('div', 'kc');
+  kc.append(el('b', '', n(d.kcal)), el('span', '', 'kcal'));
+  head.append(el('h1', '', d.dish), kc);
+  parts.push(head);
+
+  const macros = [['Protein', d.p, 4, 'var(--p)'], ['Carbs', d.c, 4, 'var(--c)'], ['Fat', d.f, 9, 'var(--f)']];
+  const energy = macros.reduce((s, m) => s + (m[1] || 0) * m[2], 0);
+  if (energy > 0) {
+    const stack = el('div', 'stack');
+    const legend = el('div', 'legend');
+    for (const [label, g, k, colour] of macros) {
+      const share = Math.round(((g || 0) * k * 100) / energy);
+      const seg = el('i');
+      seg.style.flexGrow = share;
+      seg.style.background = colour;
+      if (share > 0) stack.append(seg);
+      const cell = el('div');
+      const dot = el('i');
+      dot.style.background = colour;
+      const grams = el('b', '', `${n(g)} g`);
+      cell.append(grams, dot, `${label} ${share}%`);
+      legend.append(cell);
+    }
+    if (!drawn && !calm) stack.style.animation = 'grow 600ms cubic-bezier(.23,1,.32,1) both';
+    parts.push(stack, legend);
+  }
+
+  const bars = [];
+  if (d.goal > 0) bars.push(bar('Today', d.day || 0, 'kcal', d.goal));
+  else if (d.day) bars.push(el('div', 'pr', `Today ${n(d.day)} kcal`));
+  if (d.pg > 0 && d.pd > 0) bars.push(bar('Protein', d.pd, 'g', d.pg));
+  if (bars.length) {
+    const prog = el('div', 'prog');
+    prog.append(...bars);
+    parts.push(prog);
+  }
+
+  if (d.items && d.items.length) {
+    const det = el('details');
+    const ul = el('ul');
+    for (const item of d.items) ul.append(el('li', '', item));
+    det.append(el('summary', '', "What's in it"), ul);
+    parts.push(det);
+  }
+  if (d.tip) {
+    const tip = el('p', 'tip');
+    tip.append(el('b', '', 'Tip'), d.tip);
+    parts.push(tip);
+  }
+  if (d.streak) parts.push(el('p', 'foot', d.streak));
+
+  parts.forEach((p, i) => {
+    if (!drawn) { p.classList.add('in'); p.style.animationDelay = `${i * 40}ms`; }
+    card.append(p);
+  });
+  // Fill the bars on the next frame so the transition runs from empty.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const f of card.querySelectorAll('.fill')) f.style.transform = `scaleX(${f.dataset.to})`;
+  }));
+  drawn = true;
+}
+
+W.onEvent('chatDataChanged', render);
+render();
+W.ready();
+</script>

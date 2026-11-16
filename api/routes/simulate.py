@@ -26,6 +26,7 @@ from api.dependencies import (
 )
 from core.settings import Settings
 from workflows.dispatch_update import Dependencies, dispatch_update
+from workflows.loading_reply import LOADING_WIDGET
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,7 @@ class SimulateRequest(BaseModel):
     surface: Literal["dm", "group"] = Field(
         default="dm", description="Where the update happens."
     )
-    text: str = Field(
-        default="", description="Message text, e.g. '/recommend dinner'."
-    )
+    text: str = Field(default="", description="Message text, e.g. '/recommend dinner'.")
     chat_id: int | None = Field(
         default=None,
         description="Group chat id; defaults to the configured group.",
@@ -129,6 +128,18 @@ class _CapturingTelegram:
         return 0
 
     async def edit_message_caption(self, *_: object, **__: object) -> None:
+        pass
+
+    # Like the GIF, the loading widget isn't captured; a card widget is, as its
+    # chat_data JSON.
+    async def send_widget(
+        self, chat_id: int, html: str, chat_data: str | None = None, *_: object
+    ) -> int:
+        if html == LOADING_WIDGET:
+            return 0
+        return await self.send_message(chat_id, chat_data or "")
+
+    async def edit_message_widget_data(self, *_: object, **__: object) -> None:
         pass
 
     async def delete_message(self, *_: object, **__: object) -> None:

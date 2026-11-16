@@ -1,0 +1,65 @@
+<style>
+:root{--ink:var(--tg-theme-text-color);--hint:var(--tg-theme-hint-color);--acc:var(--tg-theme-button-color);--track:var(--tg-theme-secondary-bg-color);--out:cubic-bezier(.23,1,.32,1);--io:cubic-bezier(.77,0,.175,1)}
+body{font-family:system-ui,sans-serif;color:var(--ink)}
+.row{display:flex;align-items:center;gap:12px}
+.ring{flex:none;width:34px;height:34px;animation:spin 1s linear infinite}
+.ring circle{fill:none;stroke-width:3}
+.ring .t{stroke:var(--track)}
+.ring .a{stroke:var(--acc);stroke-linecap:round;stroke-dasharray:22 100}
+.txt{flex:1;min-width:0}
+.title{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.sub{font-size:13px;color:var(--hint);margin-top:2px}
+.time{flex:none;font-size:13px;color:var(--hint);font-variant-numeric:tabular-nums}
+.bar{position:relative;height:3px;border-radius:2px;background:var(--track);margin-top:12px;overflow:hidden}
+.bar i{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:2px;background:var(--acc);animation:sweep 1.4s var(--io) infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes sweep{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+@keyframes pulse{50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){
+.ring{animation:none}
+.bar i{width:100%;animation:pulse 2s ease-in-out infinite}
+}
+</style>
+<div class="row" role="status" aria-live="polite">
+<svg class="ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="t" cx="18" cy="18" r="15"/><circle class="a" cx="18" cy="18" r="15" pathLength="100"/></svg>
+<div class="txt"><div class="title" id="title">Working on it</div><div class="sub" id="sub">Hang tight</div></div>
+<div class="time" id="time">0s</div>
+</div>
+<div class="bar" aria-hidden="true"><i></i></div>
+<script>
+const W = window.TelegramWidget;
+const $ = (id) => document.getElementById(id);
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const t0 = Date.now();
+// Captions arrive with a leading emoji for the GIF fallback; the widget drops it.
+const clean = (s) => String(s || '').replace(/^[^\p{L}\p{N}]+/u, '').replace(/…$/, '');
+let shown = '';
+
+function enter(el) {
+  if (calm) return;
+  el.animate(
+    [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 260, easing: 'cubic-bezier(.23,1,.32,1)' }
+  );
+}
+
+function render() {
+  let d = {};
+  try { d = JSON.parse(W.chatData || '{}') || {}; } catch (e) {}
+  const title = d.dish ? d.dish : clean(d.label) || 'Working on it';
+  const sub = d.dish
+    ? `${Number(d.kcal || 0).toLocaleString()} kcal · ${clean(d.label) || 'Almost there'}`
+    : 'This takes a few seconds';
+  if (title + sub === shown) return;
+  const first = !shown;
+  shown = title + sub;
+  $('title').textContent = title;
+  $('sub').textContent = sub;
+  if (!first) { enter($('title')); enter($('sub')); }
+}
+
+setInterval(() => { $('time').textContent = `${Math.round((Date.now() - t0) / 1000)}s`; }, 1000);
+W.onEvent('chatDataChanged', render);
+render();
+W.ready();
+</script>

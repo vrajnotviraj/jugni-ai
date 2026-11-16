@@ -14,7 +14,6 @@ from telegram.api import TelegramBotApi
 from workflows.loading_reply import (
     Reply,
     finish_loading,
-    progress_caption,
     start_loading,
     update_loading,
 )
@@ -157,7 +156,7 @@ async def handle_photo(
                 telegram,
                 photo.chat_id,
                 placeholder_id,
-                progress_caption(extraction),
+                extraction,
             )
 
     try:
@@ -257,7 +256,7 @@ async def _reply_with_analysis(
             sender_label=photo.sender_label,
         )
         protein_today_g = sum(stored.protein_g for stored in photos)
-    classic, rich = format_photo_replies(
+    classic, rich, widget = format_photo_replies(
         photo.sender_label,
         analysis,
         daily_total,
@@ -268,7 +267,11 @@ async def _reply_with_analysis(
         protein_target_g=protein_target_g,
     )
     await finish_loading(
-        telegram, photo.chat_id, photo.message_id, placeholder_id, Reply(classic, rich)
+        telegram,
+        photo.chat_id,
+        photo.message_id,
+        placeholder_id,
+        Reply(classic, rich, widget=widget),
     )
 
 
