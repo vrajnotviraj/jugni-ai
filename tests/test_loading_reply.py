@@ -9,6 +9,7 @@ from presenters.photo_reply import (
     format_photo_widget_data,
 )
 from workflows.loading_reply import (
+    LOADING_ANIMATIONS,
     LOADING_WIDGET,
     Reply,
     finish_loading,
@@ -192,3 +193,25 @@ def test_widget_data_trims_to_1024_bytes():
     assert parsed["dish"] == "Thali" and parsed["goal"] == 2000
     assert "items" not in parsed or len(parsed["items"]) < 40
     assert format_photo_widget_data("Vraj", MEAL, 0) is not None
+
+
+def test_loading_animations_are_bundled():
+    assert len(LOADING_ANIMATIONS) >= 4
+    assert all(path.suffix == ".mp4" for path in LOADING_ANIMATIONS)
+
+
+def test_widget_not_allowed_pauses_widgets(monkeypatch):
+    import workflows.loading_reply as lr
+
+    monkeypatch.setattr(lr, "_widgets_paused_until", 0.0)
+
+    class NotAllowed(WidgetTelegram):
+        async def send_widget(self, *args, **kwargs):
+            self.calls.append(("widget_try", None))
+            raise RuntimeError("Bad Request: INPUT_MEDIA_WIDGET_NOT_ALLOWED")
+
+    tg = NotAllowed()
+    assert asyncio.run(start_loading(tg, 1, 10, "Analysing")) == 8
+    assert asyncio.run(start_loading(tg, 1, 10, "Analysing")) == 8
+    # Tried once, then straight to the animation while paused.
+    assert [c[0] for c in tg.calls] == ["widget_try", "gif", "gif"]

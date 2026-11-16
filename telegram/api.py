@@ -193,9 +193,7 @@ class TelegramBotApi:
         self, chat_id: int, message_id: int, chat_data: str
     ) -> None:
         if self._dry_run:
-            print(
-                f"\n[DRY-RUN telegram] editWidgetData {message_id}\n{chat_data}\n"
-            )
+            print(f"\n[DRY-RUN telegram] editWidgetData {message_id}\n{chat_data}\n")
             return
         await self._call(
             "editMessageWidgetData",
@@ -218,13 +216,14 @@ class TelegramBotApi:
                 {"message_id": reply_to_message_id, "allow_sending_without_reply": True}
             )
         # shortcut: file_id cache is per process, so each cold start re-uploads
-        # the ~200 KB GIF once; persist it in Redis if cold starts get frequent.
+        # the loading animation once; persist it in Redis if cold starts get frequent.
         file_id = self._file_ids.get(path)
         files = None
         if file_id:
             data["animation"] = file_id
         else:
-            files = {"animation": (path.name, path.read_bytes(), "image/gif")}
+            mime = "video/mp4" if path.suffix == ".mp4" else "image/gif"
+            files = {"animation": (path.name, path.read_bytes(), mime)}
         # Short: a stalled upload must fall back to the text placeholder quickly.
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(
